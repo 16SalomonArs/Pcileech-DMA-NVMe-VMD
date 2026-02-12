@@ -1,17 +1,13 @@
 # Pcileech-DMA-NAMe-VMD
+Requirements↓
 
-**🤬The recent craze for overpriced VMD firmware doesn't really match the price tag.**
+    Intel CPU (11th Generation or newer) in the main PC where the DMA card is installed.
+    Intel VMD (Virtual RAID on CPU) must be enabled in BIOS.
+    Specific Intel drivers must be installed on Windows.
+    A Windows reinstall may be required for proper driver initialization and device recognition.
 
-**😊I did not originate this source code, but I have an obligation to open source it~**
-
-**😄How it hurts the firmware scammers who sell VMD firmware at high prices, and I won't apologise at all for that！**
-
-### How to get help
-
-Official website：https://beater.solutions
-
-discord：https://discord.gg/beater
-
-🔥Beater's DC channel offers free firmware inside (including VMD which is overpriced by many firmware scammers lately), which is enough to deal with any anti-cheat detection and play the games you want to play! There is also a faster and more convenient firmwareflash in the channel, which supports all RS232 and CH347 DMAcards!
-
-## I'll create a detailed VMD guide sometime soon
+### Beater DC is a scammer!
+Beater DC is a scammer! Since our cooperation began in March, the channel admin has repeatedly delayed paying me for the firmware work I produced. At the beginning of September, when I asked for my payment, he kicked me and other developers out of the server! Beater DC is a fraudster who exploited me and my friends for profit. Don’t fall for his tricks.
+<img width="3542" height="1676" alt="image" src="https://github.com/user-attachments/assets/65306643-8760-421a-b0bd-ce8ddff4bebf" />
+<img width="624" height="670" alt="image" src="https://github.com/user-attachments/assets/f7bd4714-58be-4478-9c0e-b74c2963a9c7" />
+<img width="1266" height="678" alt="image" src="https://github.com/user-attachments/assets/30843d20-53c7-4fe0-870b-25d525bb749a" />
