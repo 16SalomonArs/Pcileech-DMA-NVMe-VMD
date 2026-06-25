@@ -212,8 +212,10 @@ module pcileech_fifo #(
     wire    [319:0]     ro;
     reg     [239:0]     rw;
     
+    localparam [7:0]    PCIE_CORE_CFG_DEFAULT = 8'b01110100;
+
     // special non-user accessible registers 
-    reg     [79:0]      _pcie_core_config = { 4'hf, 1'b1, 1'b1, 1'b0, 1'b0, 8'h01, 16'hA80A, 16'h144D, 16'hA801, 16'h144D };
+    reg     [79:0]      _pcie_core_config = { PCIE_CORE_CFG_DEFAULT, 8'h01, 16'hA80A, 16'h144D, 16'hA801, 16'h144D };
     time                _cmd_timer_inactivity_base;
     reg                 rwi_drp_rd_en;
     reg                 rwi_drp_wr_en;
@@ -284,7 +286,7 @@ module pcileech_fifo #(
             rw[175:160] <= 16'h144D;                    // +014: CFG_VEND_ID        (NOT IMPLEMENTED)
             rw[191:176] <= 16'hA80A;                    // +016: CFG_DEV_ID         (NOT IMPLEMENTED)
             rw[199:192] <= 8'h01;                       // +018: CFG_REV_ID         (NOT IMPLEMENTED)
-            rw[200]     <= 1'b1;                        // +019: PCIE CORE RESET
+            rw[200]     <= 1'b0;                        // +019: PCIE CORE RESET
             rw[201]     <= 1'b0;                        //       PCIE SUBSYSTEM RESET
             rw[202]     <= 1'b1;                        //       CFGTLP PROCESSING ENABLE
             rw[203]     <= 1'b0;                        //       CFGTLP ZERO DATA

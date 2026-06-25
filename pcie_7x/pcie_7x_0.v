@@ -420,7 +420,7 @@ output wire pcie_drp_rdy;
     .c_gen1(1'B1),
     .pci_exp_int_freq(1),
     .c_pcie_fast_config(0),
-    .bar_0("FFFFC000"),
+    .bar_0("FFF00000"),
     .bar_1("00000000"),
     .bar_2("00000000"),
     .bar_3("00000000"),

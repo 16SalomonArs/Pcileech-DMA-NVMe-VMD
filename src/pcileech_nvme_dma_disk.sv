@@ -140,7 +140,6 @@ module pcileech_bar_impl_nvme_disk(
     bit [31:0] asq_hi;
     bit [31:0] acq_lo;
     bit [31:0] acq_hi;
-    bit [31:0] doorbell_shadow;
 
     bit [15:0] admin_sq_head;
     bit [15:0] admin_sq_tail;
@@ -319,8 +318,8 @@ module pcileech_bar_impl_nvme_disk(
     assign tlps_dma_out.tuser    = {7'h00, tx_last, 1'b1};
     assign tlps_dma_out.has_data = tx_valid;
 
-    wire        wr_bar0_active_range = (wr_addr[19:14] == 6'h00);
-    wire        rd_bar0_active_range = (rd_req_addr[19:14] == 6'h00);
+    wire        wr_bar0_active_range = (wr_addr[19:0] < `NVME_BAR0_ACTIVE_LIMIT);
+    wire        rd_bar0_active_range = (rd_req_addr[19:0] < `NVME_BAR0_ACTIVE_LIMIT);
     wire [13:0] wr_off = wr_addr[13:0];
     wire [13:0] rd_off = rd_req_addr[13:0];
     wire        wr_is_msix_table = wr_bar0_active_range && (wr_off[13:5] == MSIX_TABLE_OFF[13:5]);
@@ -1082,7 +1081,20 @@ module pcileech_bar_impl_nvme_disk(
                 12'h00d: nvme_reg_read = acq_hi;
                 12'h00e: nvme_reg_read = 32'h00000000;
                 12'h00f: nvme_reg_read = 32'h00000000;
-                default: nvme_reg_read = (off[13:12] != 2'b00) ? doorbell_shadow : 32'h00000000;
+                default: begin
+                    if (off[13:12] != 2'b00) begin
+                        case (off[11:2])
+                            10'h000: nvme_reg_read = {16'h0000, admin_sq_tail};
+                            10'h001: nvme_reg_read = {16'h0000, admin_cq_head_db};
+                            10'h002: nvme_reg_read = {16'h0000, io_sq_tail};
+                            10'h003: nvme_reg_read = {16'h0000, io_cq_head_db};
+                            default: nvme_reg_read = 32'h00000000;
+                        endcase
+                    end
+                    else begin
+                        nvme_reg_read = 32'h00000000;
+                    end
+                end
             endcase
             end
         end
@@ -1198,7 +1210,6 @@ module pcileech_bar_impl_nvme_disk(
             asq_hi             <= 32'h00000000;
             acq_lo             <= 32'h00000000;
             acq_hi             <= 32'h00000000;
-            doorbell_shadow    <= 32'h00000000;
             admin_sq_head      <= 16'h0000;
             admin_sq_tail      <= 16'h0000;
             admin_cq_tail      <= 16'h0000;
@@ -1429,7 +1440,7 @@ module pcileech_bar_impl_nvme_disk(
                 endcase
             end
             else if (wr_valid && wr_is_msix_pba) begin
-                msix_pba <= msix_pba & ~wr_data;
+                msix_pba <= msix_pba;
             end
             else if (wr_valid && wr_bar0_active_range) begin
                 case (wr_off[13:2])
@@ -1535,7 +1546,6 @@ module pcileech_bar_impl_nvme_disk(
                     end
                     default: begin
                         if (wr_off[13:12] != 2'b00) begin
-                            doorbell_shadow <= merge_be(doorbell_shadow, wr_data, wr_be);
                             case (wr_off[11:2])
                                 10'h000: begin
                                     if (wr_data[15:0] < admin_sq_size)

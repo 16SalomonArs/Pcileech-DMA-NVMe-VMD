@@ -84,7 +84,7 @@ module pcie_7x_0_core_top # (
   parameter         AER_CAP_ON = "FALSE",
   parameter         AER_CAP_PERMIT_ROOTERR_UPDATE = "FALSE",
 
-  parameter [31:0]  BAR0 = 32'hFFFFC000,
+  parameter [31:0]  BAR0 = 32'hFFF00000,
   parameter [31:0]  BAR1 = 32'h00000000,
   parameter [31:0]  BAR2 = 32'h00000000,
   parameter [31:0]  BAR3 = 32'h00000000,

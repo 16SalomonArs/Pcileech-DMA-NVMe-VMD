@@ -25,12 +25,9 @@ Please also note that changing the device and vendor ID is not in itself suffici
 
 * Please first generate the initial project as outlined in points 1-4 above.
 * Open the generated project in Vivado.
-* In PROJECT MANAGER, expand the board top module and then `i_pcileech_pcie_a7` or `i_pcileech_pcie_a7x4`.
-* Double click on i_pcie_7x_0 shown in the expanded hierarchy from above to open the PCIe core designer GUI.
-* Navigate to the IDs tab. Alter ID Initial Values and Class Code to custom values.
-* BAR0 is configured as a 16 KiB window so the NVMe register area, MSI-X table at `0x3000`, and PBA at `0x3800` remain inside the same BAR. BAR1-BAR5 are intentionally disabled in the shipped profiles.
-* Click OK to save the changes to the PCIe core. Click Generate in the following dialogue.
-* After the PCIe core is rebuilt - exit Vivado and resume building of the project from point 5 in the Building section above. (Optionally one may keep Vivado open and build the project by clicking on Generate Bitstream in the lower left instead).
+* The maintained board profiles keep the PCIe identity in the board XCI files and the NVMe profile header. Do not remove and recreate `pcie_7x_0` from the Vivado GUI; doing that resets the PCIe core back to a stock Artix-7 endpoint.
+* BAR0 is a 1 MiB memory BAR. The NVMe register block, MSI-X table at `0x3000`, and PBA at `0x3800` are decoded in the low BAR range. BAR1-BAR5 are intentionally disabled in the shipped profiles.
+* If you change VID/DID/class/BAR settings, keep the XCI files, generated PCIe wrapper, and `src/nvme_board_profile.svh` in sync before building.
 
 
 #### Device Serial Number (DSN):
@@ -64,6 +61,6 @@ Linux lspci command line: `lspci -d 144d:a80a -xxxx`.
 
 It's possible to implement a custom BAR PIO memory region, commonly used by devices. Properly implemented BAR PIO memory regions may allow for more complete device emulation.
 
-First, edit the Xilinx PCIe core in Vivado. By default there is one BAR, BAR0, configured as a 16 KiB NVMe register/MSI-X window. This is possible to change, but the MSI-X table and PBA offsets must stay inside the BAR.
+By default there is one BAR, BAR0, configured as a 1 MiB memory window. The implemented NVMe register/MSI-X area lives in the low `0x4000` bytes of that BAR. The larger BAR size is intentional because current Vivado PCIe 7x releases no longer accept the old small BAR setting in the GUI.
 
 Secondly, edit the file: `pcileech_tlps128_bar_controller.sv` and follow the instructions in the file to implement custom BAR PIO memory regions.

@@ -1,6 +1,3 @@
-# Stage board IP into per-IP local directories before adding it to the project.
-# Vivado locks XCI files when several IP instances share one source/output folder.
-
 proc add_staged_board_ip {origin_dir project_name ip_dir} {
     set stage_dir "$origin_dir/$project_name/$project_name.srcs/sources_1/ip_staged"
     file delete -force $stage_dir
@@ -21,7 +18,7 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
             file copy -force $coe_file "$dst_dir/[file tail $coe_file]"
         }
 
-        add_files -norecurse -fileset sources_1 $dst_xci
+        import_ip -files $dst_xci
     }
 
     set ips [get_ips -quiet]

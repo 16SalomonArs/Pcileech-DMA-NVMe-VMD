@@ -74,7 +74,7 @@ module pcie_7x_0_pcie_7x # (
   parameter        AER_CAP_PERMIT_ROOTERR_UPDATE = "TRUE",
   parameter [3:0]  AER_CAP_VERSION = 4'h1,
   parameter        ALLOW_X8_GEN2 = "FALSE",
-  parameter [31:0] BAR0 = 32'hFFFFC000,
+  parameter [31:0] BAR0 = 32'hFFF00000,
   parameter [31:0] BAR1 = 32'hFFFF0000,
     parameter [31:0] BAR2 = 32'h00000000,
   parameter [31:0] BAR3 = 32'hFFFFFFFF,
