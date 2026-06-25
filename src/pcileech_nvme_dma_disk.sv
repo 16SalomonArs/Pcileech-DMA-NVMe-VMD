@@ -42,6 +42,10 @@ module pcileech_bar_impl_nvme_disk(
     localparam integer BACKING_SLOT_BITS = `NVME_BACKING_SLOT_BITS;
     localparam integer BACKING_INDEX_BITS = BACKING_SLOT_BITS + 7;
     localparam integer BACKING_DWORDS = BACKING_LBAS * 128;
+    localparam integer BACKING_BANK_BITS = 2;
+    localparam integer BACKING_BANKS = 1 << BACKING_BANK_BITS;
+    localparam integer BACKING_BANK_DWORDS = BACKING_DWORDS / BACKING_BANKS;
+    localparam integer BACKING_BANK_INDEX_BITS = BACKING_INDEX_BITS - BACKING_BANK_BITS;
     localparam [7:0]   BACKING_SLOT_BITS_U8 = BACKING_SLOT_BITS;
     localparam [BACKING_INDEX_BITS:0] BACKING_COUNT = BACKING_DWORDS;
     localparam [BACKING_INDEX_BITS:0] BACKING_ONE = {{BACKING_INDEX_BITS{1'b0}}, 1'b1};
@@ -120,7 +124,10 @@ module pcileech_bar_impl_nvme_disk(
     localparam [31:0] AER_RESULT_SMART_TEMP  = 32'h00020101;
     localparam [31:0] AER_RESULT_SMART_MEDIA = 32'h00020201;
 
-    (* ram_style = "block" *) bit [31:0] block_store [0:BACKING_DWORDS-1];
+    (* ram_style = "block" *) bit [31:0] block_store0 [0:BACKING_BANK_DWORDS-1];
+    (* ram_style = "block" *) bit [31:0] block_store1 [0:BACKING_BANK_DWORDS-1];
+    (* ram_style = "block" *) bit [31:0] block_store2 [0:BACKING_BANK_DWORDS-1];
+    (* ram_style = "block" *) bit [31:0] block_store3 [0:BACKING_BANK_DWORDS-1];
     bit        block_valid [0:BACKING_LBAS-1];
     bit [63:0] block_tag   [0:BACKING_LBAS-1];
     bit [31:0] cmd_dw [0:15];
@@ -285,8 +292,12 @@ module pcileech_bar_impl_nvme_disk(
     integer init_lba;
     integer init_err;
     initial begin
-        for (init_i = 0; init_i < BACKING_DWORDS; init_i = init_i + 1)
-            block_store[init_i] = 32'h00000000;
+        for (init_i = 0; init_i < BACKING_BANK_DWORDS; init_i = init_i + 1) begin
+            block_store0[init_i] = 32'h00000000;
+            block_store1[init_i] = 32'h00000000;
+            block_store2[init_i] = 32'h00000000;
+            block_store3[init_i] = 32'h00000000;
+        end
         for (init_lba = 0; init_lba < BACKING_LBAS; init_lba = init_lba + 1) begin
             block_valid[init_lba] = 1'b0;
             block_tag[init_lba] = 64'h0000000000000000;
@@ -693,6 +704,20 @@ module pcileech_bar_impl_nvme_disk(
         end
     endfunction
 
+    function automatic [BACKING_BANK_BITS-1:0] backing_bank;
+        input [BACKING_INDEX_BITS-1:0] idx;
+        begin
+            backing_bank = idx[BACKING_INDEX_BITS-1 -: BACKING_BANK_BITS];
+        end
+    endfunction
+
+    function automatic [BACKING_BANK_INDEX_BITS-1:0] backing_bank_index;
+        input [BACKING_INDEX_BITS-1:0] idx;
+        begin
+            backing_bank_index = idx[BACKING_BANK_INDEX_BITS-1:0];
+        end
+    endfunction
+
     function automatic [63:0] xfer_lba_offset;
         input [19:0] idx;
         begin
@@ -707,6 +732,31 @@ module pcileech_bar_impl_nvme_disk(
         end
     endfunction
 
+    task automatic read_backing_word;
+        input [BACKING_INDEX_BITS-1:0] idx;
+        begin
+            case (backing_bank(idx))
+                2'd0: disk_rd_data <= block_store0[backing_bank_index(idx)];
+                2'd1: disk_rd_data <= block_store1[backing_bank_index(idx)];
+                2'd2: disk_rd_data <= block_store2[backing_bank_index(idx)];
+                default: disk_rd_data <= block_store3[backing_bank_index(idx)];
+            endcase
+        end
+    endtask
+
+    task automatic write_backing_word;
+        input [BACKING_INDEX_BITS-1:0] idx;
+        input [31:0] data;
+        begin
+            case (backing_bank(idx))
+                2'd0: block_store0[backing_bank_index(idx)] <= data;
+                2'd1: block_store1[backing_bank_index(idx)] <= data;
+                2'd2: block_store2[backing_bank_index(idx)] <= data;
+                default: block_store3[backing_bank_index(idx)] <= data;
+            endcase
+        end
+    endtask
+
     task automatic read_disk_word;
         input [19:0] idx;
         reg [63:0] lba;
@@ -717,7 +767,7 @@ module pcileech_bar_impl_nvme_disk(
             word_off = idx[6:0];
             slot = backing_slot(lba);
             if (block_valid[slot] && (block_tag[slot] == lba))
-                disk_rd_data <= block_store[backing_index(lba, word_off)];
+                read_backing_word(backing_index(lba, word_off));
             else
                 disk_rd_data <= 32'h00000000;
         end
@@ -737,7 +787,7 @@ module pcileech_bar_impl_nvme_disk(
                 stat_backend_evictions <= stat_backend_evictions + 64'd1;
             block_valid[slot] <= 1'b1;
             block_tag[slot] <= lba;
-            block_store[backing_index(lba, word_off)] <= data;
+            write_backing_word(backing_index(lba, word_off), data);
         end
     endtask
 
@@ -755,7 +805,7 @@ module pcileech_bar_impl_nvme_disk(
                 stat_backend_evictions <= stat_backend_evictions + 64'd1;
             block_valid[slot] <= 1'b1;
             block_tag[slot] <= lba;
-            block_store[backing_index(lba, word_off)] <= 32'h00000000;
+            write_backing_word(backing_index(lba, word_off), 32'h00000000);
         end
     endtask
 
@@ -2298,7 +2348,7 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_FORMAT_CLEAR: begin
-                    block_store[clear_idx[BACKING_INDEX_BITS-1:0]] <= 32'h00000000;
+                    write_backing_word(clear_idx[BACKING_INDEX_BITS-1:0], 32'h00000000);
                     if (clear_idx[6:0] == 7'h00) begin
                         block_valid[clear_idx[BACKING_INDEX_BITS-1:7]] <= 1'b0;
                         block_tag[clear_idx[BACKING_INDEX_BITS-1:7]] <= 64'h0000000000000000;
