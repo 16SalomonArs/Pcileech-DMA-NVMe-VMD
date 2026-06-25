@@ -319,12 +319,14 @@ module pcileech_bar_impl_nvme_disk(
     assign tlps_dma_out.tuser    = {7'h00, tx_last, 1'b1};
     assign tlps_dma_out.has_data = tx_valid;
 
+    wire        wr_bar0_active_range = (wr_addr[19:14] == 6'h00);
+    wire        rd_bar0_active_range = (rd_req_addr[19:14] == 6'h00);
     wire [13:0] wr_off = wr_addr[13:0];
     wire [13:0] rd_off = rd_req_addr[13:0];
-    wire        wr_is_msix_table = (wr_off[13:5] == MSIX_TABLE_OFF[13:5]);
-    wire        wr_is_msix_pba   = (wr_off[13:2] == MSIX_PBA_OFF[13:2]);
-    wire        rd_is_msix_table = (rd_off[13:5] == MSIX_TABLE_OFF[13:5]);
-    wire        rd_is_msix_pba   = (rd_off[13:2] == MSIX_PBA_OFF[13:2]);
+    wire        wr_is_msix_table = wr_bar0_active_range && (wr_off[13:5] == MSIX_TABLE_OFF[13:5]);
+    wire        wr_is_msix_pba   = wr_bar0_active_range && (wr_off[13:2] == MSIX_PBA_OFF[13:2]);
+    wire        rd_is_msix_table = rd_bar0_active_range && (rd_off[13:5] == MSIX_TABLE_OFF[13:5]);
+    wire        rd_is_msix_pba   = rd_bar0_active_range && (rd_off[13:2] == MSIX_PBA_OFF[13:2]);
     wire        wr_msix_vec      = wr_off[4];
     wire        rd_msix_vec      = rd_off[4];
 
@@ -410,7 +412,7 @@ module pcileech_bar_impl_nvme_disk(
     endfunction
 
     wire [31:0] cc_next = merge_be(cc, wr_data, wr_be);
-    wire        cc_en_effective = (wr_valid && (wr_off[13:2] == 12'h005)) ? cc_next[0] : cc[0];
+    wire        cc_en_effective = (wr_valid && wr_bar0_active_range && (wr_off[13:2] == 12'h005)) ? cc_next[0] : cc[0];
     wire [63:0] asq_addr = {asq_hi, asq_lo};
     wire [63:0] acq_addr = {acq_hi, acq_lo};
     wire        admin_queue_config_ok = (admin_sq_size >= 16'd2) &&
@@ -1429,7 +1431,7 @@ module pcileech_bar_impl_nvme_disk(
             else if (wr_valid && wr_is_msix_pba) begin
                 msix_pba <= msix_pba & ~wr_data;
             end
-            else if (wr_valid) begin
+            else if (wr_valid && wr_bar0_active_range) begin
                 case (wr_off[13:2])
                     12'h003: intms <= intms | wr_data;
                     12'h004: intms <= intms & ~wr_data;
@@ -1572,7 +1574,7 @@ module pcileech_bar_impl_nvme_disk(
             end
 
             rd_req_ctx_1   <= rd_req_ctx;
-            rd_req_data_1  <= nvme_reg_read(rd_off);
+            rd_req_data_1  <= rd_bar0_active_range ? nvme_reg_read(rd_off) : 32'h00000000;
             rd_req_valid_1 <= rd_req_valid;
             rd_rsp_ctx     <= rd_req_ctx_1;
             rd_rsp_data    <= rd_req_data_1;

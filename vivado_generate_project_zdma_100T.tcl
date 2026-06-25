@@ -3,6 +3,7 @@
 #   source vivado_generate_project_zdma_100T.tcl -notrace
 
 set origin_dir [file normalize [file dirname [info script]]]
+source "$origin_dir/vivado_ip_import.tcl"
 set project_name "pcileech_zdma_100t_nvme"
 set part_name "xc7a100tfgg484-2"
 set ip_dir "$origin_dir/ip_zdma_100t"
@@ -32,8 +33,7 @@ set_property file_type "Verilog Header" [get_files "nvme_board_profile.svh"]
 set_property file_type "SystemVerilog" [get_files -regexp {.*\.sv$}]
 set_property file_type "Verilog" [get_files "pcileech_com_e.v"]
 
-add_files -norecurse -fileset sources_1 [glob -nocomplain "$ip_dir/*.coe"]
-add_files -norecurse -fileset sources_1 [glob -nocomplain "$ip_dir/*.xci"]
+add_staged_board_ip $origin_dir $project_name $ip_dir
 add_files -fileset constrs_1 "$origin_dir/src/pcileech_tbx4_100t.xdc"
 
 set_property top pcileech_tbx4_100t_top [get_filesets sources_1]

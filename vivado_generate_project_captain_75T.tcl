@@ -3,6 +3,7 @@
 #   source vivado_generate_project_captain_75T.tcl -notrace
 
 set origin_dir [file normalize [file dirname [info script]]]
+source "$origin_dir/vivado_ip_import.tcl"
 set project_name "pcileech_captaindma_75t_nvme"
 set part_name "xc7a75tfgg484-2"
 set ip_dir "$origin_dir/ip_captaindma_75t"
@@ -32,8 +33,7 @@ set_property file_type "SystemVerilog" [get_files -regexp {.*\.sv$}]
 set_property file_type "Verilog Header" [get_files "pcileech_header.svh"]
 set_property file_type "Verilog Header" [get_files "nvme_board_profile.svh"]
 
-add_files -norecurse -fileset sources_1 [glob -nocomplain "$ip_dir/*.coe"]
-add_files -norecurse -fileset sources_1 [glob -nocomplain "$ip_dir/*.xci"]
+add_staged_board_ip $origin_dir $project_name $ip_dir
 add_files -fileset constrs_1 "$origin_dir/src/pcileech_75t484_x1_captaindma_75t.xdc"
 
 set_property top pcileech_75t484_x1_top [get_filesets sources_1]

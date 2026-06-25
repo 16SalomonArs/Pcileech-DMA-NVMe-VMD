@@ -9,7 +9,7 @@
 `define NVME_PCI_CLASS_CODE       24'h010802
 `define NVME_MSIX_TABLE_OFFSET    14'h3000
 `define NVME_MSIX_PBA_OFFSET      14'h3800
-`define NVME_BAR0_MASK            32'hffffc000
+`define NVME_BAR0_MASK            32'hfff00000
 `define NVME_IEEE_OUI_DWORD       32'h00253800
 
 `ifdef NVME_PROFILE_75T
