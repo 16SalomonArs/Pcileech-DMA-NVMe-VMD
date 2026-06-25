@@ -26,7 +26,7 @@ module pcileech_pcie_cfgspace_shadow(
     wire [9:0]      int_rd_addr;
     
     // ----------------------------------------------------------------------------
-    // WRITE multiplexor: simple naive multiplexor which will prioritize in order:
+    // Write arbitration priority:
     // (1) PCIe (if enabled), (2) USB, (3) INTERNAL.
     // Collisions will be discarded (it's assumed that they'll be very rare)
     // ----------------------------------------------------------------------------
@@ -38,7 +38,7 @@ module pcileech_pcie_cfgspace_shadow(
     wire [31:0]     bram_wr_data = bram_wr_1_tlp ? dshadow2tlp.rx_data : (bram_wr_2_usb ? dshadow2fifo.rx_data : int_wr_data);
     
     // ----------------------------------------------------------------------------
-    // WRITE multiplexor and state machine: simple naive multiplexor which will prioritize in order:
+    // Read arbitration priority:
     // (1) PCIe (if enabled), (2) USB, (3) INTERNAL.
     // Collisions will be discarded (it's assumed that they'll be very rare)
     // ----------------------------------------------------------------------------

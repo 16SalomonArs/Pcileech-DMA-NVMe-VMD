@@ -191,7 +191,6 @@ module pcileech_bar_impl_nvme_disk(
     bit [31:0] msix_data [0:1];
     bit [31:0] msix_vector_ctrl [0:1];
     bit [31:0] msix_pba;
-    bit        irq_use_msix;
     bit        irq_vector;
     bit [7:0]  thermal_load;
     bit [19:0] thermal_timer;
@@ -324,10 +323,7 @@ module pcileech_bar_impl_nvme_disk(
     wire [13:0] rd_off = rd_req_addr[13:0];
     wire        wr_is_msix_table = wr_bar0_active_range && (wr_off[13:5] == MSIX_TABLE_OFF[13:5]);
     wire        wr_is_msix_pba   = wr_bar0_active_range && (wr_off[13:2] == MSIX_PBA_OFF[13:2]);
-    wire        rd_is_msix_table = rd_bar0_active_range && (rd_off[13:5] == MSIX_TABLE_OFF[13:5]);
-    wire        rd_is_msix_pba   = rd_bar0_active_range && (rd_off[13:2] == MSIX_PBA_OFF[13:2]);
     wire        wr_msix_vec      = wr_off[4];
-    wire        rd_msix_vec      = rd_off[4];
 
     wire [15:0] admin_sq_size = {4'h0, aqa[11:0]} + 16'd1;
     wire [15:0] admin_cq_size = {4'h0, aqa[27:16]} + 16'd1;
@@ -1257,7 +1253,6 @@ module pcileech_bar_impl_nvme_disk(
             msix_vector_ctrl[0]<= 32'h00000001;
             msix_vector_ctrl[1]<= 32'h00000001;
             msix_pba           <= 32'h00000000;
-            irq_use_msix       <= 1'b0;
             irq_vector         <= 1'b0;
             thermal_load       <= 8'h00;
             thermal_timer      <= 20'h00000;
@@ -1436,7 +1431,7 @@ module pcileech_bar_impl_nvme_disk(
                     2'd0: msix_addr[wr_msix_vec][31:0]  <= merge_be(msix_addr[wr_msix_vec][31:0],  wr_data, wr_be);
                     2'd1: msix_addr[wr_msix_vec][63:32] <= merge_be(msix_addr[wr_msix_vec][63:32], wr_data, wr_be);
                     2'd2: msix_data[wr_msix_vec]        <= merge_be(msix_data[wr_msix_vec],        wr_data, wr_be);
-                    2'd3: msix_vector_ctrl[wr_msix_vec] <= merge_be(msix_vector_ctrl[wr_msix_vec], wr_data, wr_be);
+                    2'd3: msix_vector_ctrl[wr_msix_vec] <= merge_be(msix_vector_ctrl[wr_msix_vec], wr_data, wr_be) & 32'h00000001;
                 endcase
             end
             else if (wr_valid && wr_is_msix_pba) begin
@@ -1847,12 +1842,14 @@ module pcileech_bar_impl_nvme_disk(
                                         end
                                     end
                                     8'h04: begin
-                                        if ((cmd_dw[11][15:0] < 16'd250) || (cmd_dw[11][15:0] > 16'd430)) begin
+                                        if ((cmd_dw[11][31:16] != 16'h0000) ||
+                                            (cmd_dw[11][15:0] < 16'd250) ||
+                                            (cmd_dw[11][15:0] > 16'd430)) begin
                                             cqe_status <= NVME_SC_INVALID_FIELD;
                                             record_error(NVME_SC_INVALID_FIELD, 1'b0);
                                         end
                                         else begin
-                                            feat_temp_threshold <= cmd_dw[11];
+                                            feat_temp_threshold <= {16'h0000, cmd_dw[11][15:0]};
                                         end
                                     end
                                     8'h06: begin
@@ -1895,6 +1892,24 @@ module pcileech_bar_impl_nvme_disk(
                                         record_error(NVME_SC_INVALID_FIELD, 1'b0);
                                     end
                                 endcase
+                                state <= ST_CQE_REQ;
+                            end
+                            8'h08: begin
+                                if (cmd_dw[10][15:0] > 16'd1) begin
+                                    cqe_status <= NVME_SC_INVALID_QID;
+                                    record_error(NVME_SC_INVALID_QID, 1'b0);
+                                end
+                                else if ((cmd_dw[11] != 32'h00000000) ||
+                                         (cmd_dw[12] != 32'h00000000) ||
+                                         (cmd_dw[13] != 32'h00000000) ||
+                                         (cmd_dw[14] != 32'h00000000) ||
+                                         (cmd_dw[15] != 32'h00000000)) begin
+                                    cqe_status <= NVME_SC_INVALID_FIELD;
+                                    record_error(NVME_SC_INVALID_FIELD, 1'b0);
+                                end
+                                else begin
+                                    cqe_result <= 32'h00000001;
+                                end
                                 state <= ST_CQE_REQ;
                             end
                             8'h0a: begin
@@ -2449,11 +2464,6 @@ module pcileech_bar_impl_nvme_disk(
                                 end
                             end
                             irq_vector <= cqe_irq_vector;
-                            irq_use_msix <= cqe_irq_enabled &&
-                                            msix_enable &&
-                                            !msix_function_mask &&
-                                            !msix_vector_ctrl[cqe_irq_vector][0] &&
-                                            (msix_addr[cqe_irq_vector] != 64'h0000000000000000);
                             if (cqe_irq_enabled && !intms[cqe_irq_vector]) begin
                                 if (msix_enable) begin
                                     msix_pba[cqe_irq_vector] <= 1'b1;

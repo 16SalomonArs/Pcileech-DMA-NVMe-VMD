@@ -13,4 +13,4 @@ if not defined VIVADO_EXE (
         exit /b 1
     )
 )
-call "%VIVADO_EXE%" -source "%SCRIPT_DIR%vivado_generate_project_zdma_100T.tcl" -notrace -nolog -nojournal
+call "%VIVADO_EXE%" -source "%SCRIPT_DIR%vivado_generate_project_captain_75T.tcl" -notrace -nolog -nojournal

@@ -680,9 +680,7 @@ endmodule
 
 
 // ------------------------------------------------------------------------
-// Example BAR implementation that does nothing but drop any read/writes
-// silently without generating a response.
-// This is only recommended for placeholder designs.
+// Empty BAR implementation. Writes are ignored and reads do not return data.
 // Latency = N/A.
 // ------------------------------------------------------------------------
 module pcileech_bar_impl_none(

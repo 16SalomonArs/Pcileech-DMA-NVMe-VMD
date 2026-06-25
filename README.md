@@ -2,20 +2,19 @@
 
 ## Implemented
 
-- Makes a supported PCILeech FPGA board show up as a Samsung SSD 980 PRO style NVMe drive.
-- Uses a Samsung-looking PCIe/NVMe profile instead of exposing the board as a plain DMA endpoint.
-- Includes build profiles for CaptainDMA 75T, CaptainDMA 100T, and ZDMA 100T.
-- Supports normal NVMe driver startup: controller enable/disable, queue setup, doorbells, and reset cleanup.
-- Supports host read and write commands through the DMA TLP path.
-- Keeps written sectors in a volatile FPGA-side cache, so read-after-write works during the same power session.
-- Handles common I/O layouts used by real systems: small reads/writes, larger transfers, page crossings, PRP1/PRP2, and PRP lists.
-- Reports Identify Controller / Namespace data that matches the advertised device profile.
-- Reports SMART / Health data, including temperature, read/write counters, command counters, error counters, and unsafe shutdown count.
-- Uses FPGA XADC temperature data with a simple workload curve instead of a fixed fake temperature.
-- Supports Error Log, Supported Log Pages, Firmware Slot Info, and vendor debug log page `C0h`.
-- Supports Flush, Format, Write Zeroes, and DSM/TRIM for common OS and tool testing.
+- Presents supported PCILeech FPGA boards as a Samsung SSD 980 PRO style NVMe drive.
+- Board profiles are included for CaptainDMA 75T, CaptainDMA 100T, and ZDMA 100T.
+- Handles the normal NVMe driver path: controller enable/disable, admin queue setup, I/O queue setup, doorbells, and reset cleanup.
+- Moves host read/write payloads over the DMA TLP path.
+- Keeps written sectors in a volatile FPGA-side cache, so read-after-write works until the FPGA is reset or power-cycled.
+- Handles small I/O, larger transfers, 4K page crossings, PRP1/PRP2, and PRP list transfers.
+- Keeps PCIe identity, Identify Controller, and Identify Namespace fields aligned with the shipped Samsung-style profile.
+- Reports SMART / Health data with temperature, read/write counters, command counters, error counters, and unsafe shutdown count.
+- Uses FPGA XADC temperature input with a light workload-based offset.
+- Implements Error Log, Supported Log Pages, Firmware Slot Info, and vendor log page `C0h`.
+- Implements Flush, Format, Write Zeroes, and DSM/TRIM for normal OS and tool testing.
 - Supports MSI and MSI-X interrupts, including table, PBA, function mask, and vector mask behavior.
-- Data is not persistent after FPGA reset or power loss; this is an FPGA-backed NVMe disk profile, not NAND firmware.
+- Backing storage is volatile FPGA cache, not persistent NAND.
 
 ## Requirements
 

@@ -58,7 +58,7 @@ module pcileech_tlps128_cfgspace_shadow(
     );
 
     // ----------------------------------------------------------------------------
-    // WRITE multiplexor: simple naive multiplexor which will prioritize in order:
+    // Write arbitration priority:
     // (1) PCIe (if enabled), (2) USB, (3) INTERNAL.
     // Collisions will be discarded (it's assumed that they'll be very rare)
     // ----------------------------------------------------------------------------
@@ -68,7 +68,7 @@ module pcileech_tlps128_cfgspace_shadow(
     wire [31:0]     bram_wr_data = bram_wr_1_tlp ? pcie_rx_data : (bram_wr_2_usb ? usb_rx_data : 32'h00000000);
     
     // ----------------------------------------------------------------------------
-    // WRITE multiplexor and state machine: simple naive multiplexor which will prioritize in order:
+    // Read arbitration priority:
     // (1) PCIe (if enabled), (2) USB, (3) INTERNAL.
     // Collisions will be discarded (it's assumed that they'll be very rare)
     // ----------------------------------------------------------------------------

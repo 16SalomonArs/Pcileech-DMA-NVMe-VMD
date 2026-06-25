@@ -10,6 +10,7 @@
 
 `timescale 1ns / 1ps
 `include "pcileech_header.svh"
+`include "nvme_board_profile.svh"
 
 `define ENABLE_STARTUPE2
 
@@ -215,7 +216,14 @@ module pcileech_fifo #(
     localparam [7:0]    PCIE_CORE_CFG_DEFAULT = 8'b01110100;
 
     // special non-user accessible registers 
-    reg     [79:0]      _pcie_core_config = { PCIE_CORE_CFG_DEFAULT, 8'h01, 16'hA80A, 16'h144D, 16'hA801, 16'h144D };
+    reg     [79:0]      _pcie_core_config = {
+        PCIE_CORE_CFG_DEFAULT,
+        `NVME_PCI_REVISION_ID,
+        `NVME_PCI_DEVICE_ID,
+        `NVME_PCI_VENDOR_ID,
+        `NVME_PCI_SUBSYS_ID,
+        `NVME_PCI_SUBSYS_VENDOR_ID
+    };
     time                _cmd_timer_inactivity_base;
     reg                 rwi_drp_rd_en;
     reg                 rwi_drp_wr_en;
@@ -281,11 +289,11 @@ module pcileech_fifo #(
             rw[127:96]  <= 0;                           // +00C: cmd_send_count [little-endian]
             // PCIE INITIAL CONFIG (SPECIAL BITSTREAM)
             // NB! "initial" CLK0 values may also be changed in: '_pcie_core_config = {...};' [important on PCIeScreamer].
-            rw[143:128] <= 16'h144D;                    // +010: CFG_SUBSYS_VEND_ID (NOT IMPLEMENTED)
-            rw[159:144] <= 16'hA801;                    // +012: CFG_SUBSYS_ID      (NOT IMPLEMENTED)
-            rw[175:160] <= 16'h144D;                    // +014: CFG_VEND_ID        (NOT IMPLEMENTED)
-            rw[191:176] <= 16'hA80A;                    // +016: CFG_DEV_ID         (NOT IMPLEMENTED)
-            rw[199:192] <= 8'h01;                       // +018: CFG_REV_ID         (NOT IMPLEMENTED)
+            rw[143:128] <= `NVME_PCI_SUBSYS_VENDOR_ID;  // +010: CFG_SUBSYS_VEND_ID
+            rw[159:144] <= `NVME_PCI_SUBSYS_ID;         // +012: CFG_SUBSYS_ID
+            rw[175:160] <= `NVME_PCI_VENDOR_ID;         // +014: CFG_VEND_ID
+            rw[191:176] <= `NVME_PCI_DEVICE_ID;         // +016: CFG_DEV_ID
+            rw[199:192] <= `NVME_PCI_REVISION_ID;       // +018: CFG_REV_ID
             rw[200]     <= 1'b0;                        // +019: PCIE CORE RESET
             rw[201]     <= 1'b0;                        //       PCIE SUBSYSTEM RESET
             rw[202]     <= 1'b1;                        //       CFGTLP PROCESSING ENABLE

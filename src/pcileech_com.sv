@@ -65,7 +65,7 @@ module pcileech_com (
             // - send some initial TLP on core startup.
             // - set initial VID/PID if PCIe core has been modified.
             // - write to DRP memory space to alter the core.
-            // replace / expand on dummy values below - for syntax of each 64-bit word
+            // Extend the words below as needed. For the command word format,
             // please consult sources and also device_fpga.c in the LeechCore project.
             64'h00000000_00000000,
             64'h00000000_00000000,
