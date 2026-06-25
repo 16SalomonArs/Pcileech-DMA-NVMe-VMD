@@ -2,10 +2,7 @@
 
 ## Implemented
 
-- Presents supported PCILeech FPGA boards as a Samsung SSD 980 PRO style NVMe drive.
-- Board profiles are included for CaptainDMA 75T, CaptainDMA 100T, and ZDMA 100T.
 - Handles the normal NVMe driver path: controller enable/disable, admin queue setup, I/O queue setup, doorbells, and reset cleanup.
-- Moves host read/write payloads over the DMA TLP path.
 - Keeps written sectors in a volatile FPGA-side cache, so read-after-write works until the FPGA is reset or power-cycled.
 - Handles small I/O, larger transfers, 4K page crossings, PRP1/PRP2, and PRP list transfers.
 - Keeps PCIe identity, Identify Controller, and Identify Namespace fields aligned with the shipped Samsung-style profile.
