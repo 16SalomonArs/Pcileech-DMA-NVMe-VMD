@@ -176,6 +176,8 @@ module pcileech_ft601(
                 state <= `S_FT601_TX_COOLDOWN2;
             `S_FT601_TX_COOLDOWN2:
                 state   <= `S_FT601_IDLE;
+            default:
+                state   <= `S_FT601_IDLE;
         endcase
 
 endmodule

@@ -345,11 +345,11 @@ module pcileech_tlps128_bar_wrengine(
                     first_dw    <= 1;
                     be_first    <= f_tdata[35:32];
                     be_last     <= f_tdata[39:36];
-                    if ( f_tdata[31:29] == 8'b010 ) begin       // 3 DW header, with data
+                    if ( f_tdata[31:29] == 3'b010 ) begin       // 3 DW header, with data
                         addr    <= { f_tdata[95:66], 2'b00 };
                         state   <= `S_ENGINE_TX3;
                     end
-                    else if ( f_tdata[31:29] == 8'b011 ) begin  // 4 DW header, with data
+                    else if ( f_tdata[31:29] == 3'b011 ) begin  // 4 DW header, with data
                         addr    <= { f_tdata[127:98], 2'b00 };
                         state   <= `S_ENGINE_4DW_REQDATA;
                     end 
@@ -391,6 +391,9 @@ module pcileech_tlps128_bar_wrengine(
                 first_dw    <= 0;
                 wr_be       <= first_dw ? be_first : (!tlast ? 4'hf : be_last);
                 state       <= !tlast ? `S_ENGINE_TX0 : `S_ENGINE_FIRST;
+            end
+            default: begin
+                state       <= `S_ENGINE_IDLE;
             end
         endcase
 

@@ -31,7 +31,9 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
 
     set coe_files [lsort [glob -nocomplain "$ip_dir/*.coe"]]
     set xci_files [lsort [glob -nocomplain "$ip_dir/*.xci"]]
-    set staged_xci_files [list]
+    if {[llength $xci_files] == 0} {
+        error "No XCI files found in $ip_dir"
+    }
 
     foreach xci_file $xci_files {
         set ip_name [file rootname [file tail $xci_file]]
@@ -45,17 +47,27 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
             file copy -force $coe_file "$dst_dir/[file tail $coe_file]"
         }
 
-        lappend staged_xci_files $dst_xci
         import_ip -files $dst_xci
     }
 
     set ips [get_ips -quiet]
     if {[llength $ips] != 0} {
         upgrade_ip -quiet $ips
-        foreach staged_xci_file $staged_xci_files {
-            set ip_file [get_files -quiet $staged_xci_file]
-            if {[llength $ip_file] != 0} {
-                set_property GENERATE_SYNTH_CHECKPOINT true $ip_file
+        foreach ip $ips {
+            set ip_files [get_files -quiet -of_objects $ip]
+            if {[llength $ip_files] == 0} {
+                set ip_name [get_property NAME $ip]
+                set ip_files [get_files -quiet -filter "NAME =~ */$ip_name/$ip_name.xci"]
+            }
+            set checkpoint_files 0
+            foreach ip_file $ip_files {
+                if {[string equal -nocase [file extension $ip_file] ".xci"]} {
+                    set_property GENERATE_SYNTH_CHECKPOINT true $ip_file
+                    incr checkpoint_files
+                }
+            }
+            if {$checkpoint_files == 0} {
+                error "No imported XCI file object found for IP [get_property NAME $ip]"
             }
         }
         generate_target all $ips

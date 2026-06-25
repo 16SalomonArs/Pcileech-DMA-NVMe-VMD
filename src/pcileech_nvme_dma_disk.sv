@@ -47,6 +47,7 @@ module pcileech_bar_impl_nvme_disk(
     localparam integer BACKING_BANK_DWORDS = BACKING_DWORDS / BACKING_BANKS;
     localparam integer BACKING_BANK_INDEX_BITS = BACKING_INDEX_BITS - BACKING_BANK_BITS;
     localparam [7:0]   BACKING_SLOT_BITS_U8 = BACKING_SLOT_BITS;
+    localparam [BACKING_INDEX_BITS:0] BACKING_SLOT_COUNT = BACKING_LBAS;
     localparam [BACKING_INDEX_BITS:0] BACKING_COUNT = BACKING_DWORDS;
     localparam [BACKING_INDEX_BITS:0] BACKING_ONE = {{BACKING_INDEX_BITS{1'b0}}, 1'b1};
     localparam [63:0]  DISK_LBAS      = PROFILE_LBAS;
@@ -102,7 +103,7 @@ module pcileech_bar_impl_nvme_disk(
     localparam [7:0] ST_IRQ_WAIT       = 8'd16;
     localparam [7:0] ST_DSM_FETCH_REQ  = 8'd17;
     localparam [7:0] ST_DSM_FETCH_WAIT = 8'd18;
-    localparam [7:0] ST_DSM_CLEAR      = 8'd19;
+    localparam [7:0] ST_DSM_INVALIDATE = 8'd19;
 
     localparam [3:0] PAYLOAD_ZERO       = 4'd0;
     localparam [3:0] PAYLOAD_IDENT_CTL  = 4'd1;
@@ -252,6 +253,7 @@ module pcileech_bar_impl_nvme_disk(
     bit [31:0] dsm_dw1;
     bit [31:0] dsm_dw2;
     bit [63:0] dsm_lba;
+    bit [31:0] dsm_range_blocks;
     bit [19:0] wait_timer;
     bit [19:0] cq_full_timer;
     bit        aer_pending;
@@ -1349,6 +1351,7 @@ module pcileech_bar_impl_nvme_disk(
             dsm_dw1           <= 32'h00000000;
             dsm_dw2           <= 32'h00000000;
             dsm_lba           <= 64'h0000000000000000;
+            dsm_range_blocks  <= 32'h00000000;
             wait_timer        <= 20'h00000;
             cq_full_timer     <= 20'h00000;
             aer_pending       <= 1'b0;
@@ -2421,11 +2424,9 @@ module pcileech_bar_impl_nvme_disk(
                                     end
                                 end
                                 else if (lba_range_ok(32'd1, {cpl_data, dsm_dw2}, dsm_dw1)) begin
-                                    clear_idx      <= {BACKING_INDEX_BITS+1{1'b0}};
-                                    clear_total_dw <= (dsm_dw1 >= BACKING_LBAS) ?
-                                                      BACKING_COUNT :
-                                                      {dsm_dw1[BACKING_SLOT_BITS-1:0], 7'h00};
-                                    state          <= ST_DSM_CLEAR;
+                                    clear_idx        <= {BACKING_INDEX_BITS+1{1'b0}};
+                                    dsm_range_blocks <= dsm_dw1;
+                                    state            <= ST_DSM_INVALIDATE;
                                 end
                                 else begin
                                     cqe_status <= NVME_SC_LBA_RANGE;
@@ -2448,9 +2449,14 @@ module pcileech_bar_impl_nvme_disk(
                     end
                 end
 
-                ST_DSM_CLEAR: begin
-                    zero_disk_word_at(dsm_lba, clear_idx);
-                    if ((clear_idx + BACKING_ONE) >= clear_total_dw) begin
+                ST_DSM_INVALIDATE: begin
+                    if (block_valid[clear_idx[BACKING_SLOT_BITS-1:0]] &&
+                        (block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] >= dsm_lba) &&
+                        (block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] < (dsm_lba + {32'h00000000, dsm_range_blocks}))) begin
+                        block_valid[clear_idx[BACKING_SLOT_BITS-1:0]] <= 1'b0;
+                        block_tag[clear_idx[BACKING_SLOT_BITS-1:0]]   <= 64'h0000000000000000;
+                    end
+                    if ((clear_idx + BACKING_ONE) >= BACKING_SLOT_COUNT) begin
                         if (dsm_range_idx == dsm_range_last) begin
                             state <= ST_CQE_REQ;
                         end
