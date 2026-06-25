@@ -31,6 +31,7 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
 
     set coe_files [lsort [glob -nocomplain "$ip_dir/*.coe"]]
     set xci_files [lsort [glob -nocomplain "$ip_dir/*.xci"]]
+    set staged_xci_files [list]
 
     foreach xci_file $xci_files {
         set ip_name [file rootname [file tail $xci_file]]
@@ -44,13 +45,19 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
             file copy -force $coe_file "$dst_dir/[file tail $coe_file]"
         }
 
+        lappend staged_xci_files $dst_xci
         import_ip -files $dst_xci
     }
 
     set ips [get_ips -quiet]
     if {[llength $ips] != 0} {
         upgrade_ip -quiet $ips
-        set_property GENERATE_SYNTH_CHECKPOINT true $ips
+        foreach staged_xci_file $staged_xci_files {
+            set ip_file [get_files -quiet $staged_xci_file]
+            if {[llength $ip_file] != 0} {
+                set_property GENERATE_SYNTH_CHECKPOINT true $ip_file
+            }
+        }
         generate_target all $ips
         synth_ip $ips
     }
