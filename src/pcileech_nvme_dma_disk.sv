@@ -38,10 +38,10 @@ module pcileech_bar_impl_nvme_disk(
 
     localparam [63:0]  PROFILE_LBAS   = 64'h0000000074706db0; // Samsung 980 PRO 1TB: 1,953,525,168 LBAs.
     localparam [127:0] PROFILE_BYTES  = 128'h0000000000000000000000e8e0db6000;
-    localparam integer BACKING_LBAS   = `NVME_BACKING_LBAS; // Volatile FPGA BRAM cache window.
     localparam integer BACKING_SLOT_BITS = `NVME_BACKING_SLOT_BITS;
     localparam integer BACKING_INDEX_BITS = BACKING_SLOT_BITS + 7;
-    localparam integer BACKING_DWORDS = BACKING_LBAS * 128;
+    localparam integer BACKING_LBAS   = 1 << BACKING_SLOT_BITS; // Volatile FPGA BRAM cache slots.
+    localparam integer BACKING_DWORDS = 1 << BACKING_INDEX_BITS;
     localparam integer BACKING_BANK_BITS = 2;
     localparam integer BACKING_BANKS = 1 << BACKING_BANK_BITS;
     localparam integer BACKING_BANK_DWORDS = BACKING_DWORDS / BACKING_BANKS;
