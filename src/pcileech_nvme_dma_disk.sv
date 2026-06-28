@@ -46,7 +46,10 @@ module pcileech_bar_impl_nvme_disk(
     localparam integer BACKING_BANKS = 1 << BACKING_BANK_BITS;
     localparam integer BACKING_BANK_DWORDS = BACKING_DWORDS / BACKING_BANKS;
     localparam integer BACKING_BANK_INDEX_BITS = BACKING_INDEX_BITS - BACKING_BANK_BITS;
+    localparam integer PRP_LIST_BITS = `NVME_PRP_LIST_BITS;
+    localparam integer PRP_LIST_ENTRIES = 1 << PRP_LIST_BITS;
     localparam [7:0]   BACKING_SLOT_BITS_U8 = BACKING_SLOT_BITS;
+    localparam [7:0]   PRP_LIST_BITS_U8 = PRP_LIST_BITS;
     localparam [BACKING_INDEX_BITS:0] BACKING_SLOT_COUNT = BACKING_LBAS;
     localparam [BACKING_INDEX_BITS:0] BACKING_COUNT = BACKING_DWORDS;
     localparam [BACKING_INDEX_BITS:0] BACKING_ONE = {{BACKING_INDEX_BITS{1'b0}}, 1'b1};
@@ -183,10 +186,10 @@ module pcileech_bar_impl_nvme_disk(
     bit [3:0]  xfer_payload;
     bit [31:0] disk_rd_data;
     bit        prp_list_active;
-    bit [7:0]  prp_fetch_idx;
-    bit [7:0]  prp_fetch_last;
+    bit [PRP_LIST_BITS-1:0] prp_fetch_idx;
+    bit [PRP_LIST_BITS-1:0] prp_fetch_last;
     bit        prp_fetch_dw;
-    bit [63:0] prp_list [0:255];
+    bit [63:0] prp_list [0:PRP_LIST_ENTRIES-1];
     bit [31:0] cqe_result;
     bit [14:0] cqe_status;
     bit [15:0] cqe_cid;
@@ -497,7 +500,7 @@ module pcileech_bar_impl_nvme_disk(
             total_bytes = {10'h0, total_dw, 2'b00};
             rem_bytes = total_bytes - prp_first_span(prp1);
             entries = (rem_bytes[11:0] == 12'h000) ? rem_bytes[20:12] : (rem_bytes[20:12] + 9'd1);
-            prp_list_too_many = prp_needs_list(prp1, total_dw) && (entries > 9'd256);
+            prp_list_too_many = prp_needs_list(prp1, total_dw) && (entries > PRP_LIST_ENTRIES);
         end
     endfunction
 
@@ -536,7 +539,7 @@ module pcileech_bar_impl_nvme_disk(
             rem_bytes = total_bytes - prp_first_span(prp1);
             entries = (rem_bytes[11:0] == 12'h000) ? rem_bytes[20:12] : (rem_bytes[20:12] + 9'd1);
             prp_list_last = (entries == 9'd0) ? 8'd0 :
-                            (entries > 9'd256) ? 8'hff :
+                            (entries > PRP_LIST_ENTRIES) ? 8'hff :
                             (entries[7:0] - 8'd1);
         end
     endfunction
@@ -548,12 +551,12 @@ module pcileech_bar_impl_nvme_disk(
         reg [31:0] byte_off;
         reg [31:0] first_span;
         reg [31:0] rem_off;
-        reg [7:0]  list_idx;
+        reg [PRP_LIST_BITS-1:0] list_idx;
         begin
             byte_off   = {10'h0, dw_index, 2'b00};
             first_span = prp_first_span(prp1);
             rem_off    = byte_off - first_span;
-            list_idx   = rem_off[19:12];
+            list_idx   = rem_off[12 + PRP_LIST_BITS - 1:12];
             if (byte_off < first_span)
                 prp_addr = prp1 + byte_off;
             else if (prp_list_active)
@@ -834,15 +837,15 @@ module pcileech_bar_impl_nvme_disk(
             else if (prp_needs_list(prp1, total_dw)) begin
                 last_entry = prp_list_last(prp1, total_dw);
                 prp_list_active <= 1'b1;
-                prp_fetch_idx   <= 8'd0;
-                prp_fetch_last  <= last_entry;
+                prp_fetch_idx   <= {PRP_LIST_BITS{1'b0}};
+                prp_fetch_last  <= last_entry[PRP_LIST_BITS-1:0];
                 prp_fetch_dw    <= 1'b0;
                 stat_prp_list_fetches <= stat_prp_list_fetches + {56'h00000000000000, last_entry} + 64'd1;
                 state           <= ST_PRP_LIST_REQ;
             end
             else begin
                 prp_list_active <= 1'b0;
-                prp_fetch_last  <= 8'd0;
+                prp_fetch_last  <= {PRP_LIST_BITS{1'b0}};
                 state           <= next_state;
             end
         end
@@ -1041,7 +1044,7 @@ module pcileech_bar_impl_nvme_disk(
                 8'd0:  vendor_log_word = ascii4("N","V","M","D");
                 8'd1:  vendor_log_word = 32'h00000002;
                 8'd2:  vendor_log_word = BACKING_LBAS;
-                8'd3:  vendor_log_word = {8'h00, PROFILE_MDTS, 8'h00, BACKING_SLOT_BITS_U8};
+                8'd3:  vendor_log_word = {PRP_LIST_BITS_U8, PROFILE_MDTS, 8'h00, BACKING_SLOT_BITS_U8};
                 8'd4:  vendor_log_word = {12'h000, MAX_XFER_DW};
                 8'd5:  vendor_log_word = {12'h000, DMA_TIMEOUT_CLKS};
                 8'd6:  vendor_log_word = NVME_CLK_HZ[31:0];
@@ -1287,8 +1290,8 @@ module pcileech_bar_impl_nvme_disk(
             xfer_payload       <= PAYLOAD_ZERO;
             disk_rd_data       <= 32'h00000000;
             prp_list_active    <= 1'b0;
-            prp_fetch_idx      <= 8'd0;
-            prp_fetch_last     <= 8'd0;
+            prp_fetch_idx      <= {PRP_LIST_BITS{1'b0}};
+            prp_fetch_last     <= {PRP_LIST_BITS{1'b0}};
             prp_fetch_dw       <= 1'b0;
             cqe_result         <= 32'h00000000;
             cqe_status         <= NVME_SC_SUCCESS;
@@ -2227,7 +2230,7 @@ module pcileech_bar_impl_nvme_disk(
 
                 ST_PRP_LIST_REQ: begin
                     if (!tx_valid) begin
-                        start_mrd1(cmd_prp2 + ({55'h0, prp_fetch_idx, prp_fetch_dw} << 2), DMA_TAG);
+                        start_mrd1(cmd_prp2 + ({{(63-PRP_LIST_BITS){1'b0}}, prp_fetch_idx, prp_fetch_dw} << 2), DMA_TAG);
                         wait_timer <= 20'h00000;
                         state <= ST_PRP_LIST_WAIT;
                     end
@@ -2260,7 +2263,7 @@ module pcileech_bar_impl_nvme_disk(
                                 state <= xfer_after_prp_state;
                             end
                             else begin
-                                prp_fetch_idx <= prp_fetch_idx + 8'd1;
+                                prp_fetch_idx <= prp_fetch_idx + {{(PRP_LIST_BITS-1){1'b0}}, 1'b1};
                                 state <= ST_PRP_LIST_REQ;
                             end
                         end

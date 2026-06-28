@@ -31,6 +31,7 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
 
     set coe_files [lsort [glob -nocomplain "$ip_dir/*.coe"]]
     set xci_files [lsort [glob -nocomplain "$ip_dir/*.xci"]]
+    set staged_xci_files [list]
     if {[llength $xci_files] == 0} {
         error "No XCI files found in $ip_dir"
     }
@@ -42,6 +43,7 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
 
         file mkdir $dst_dir
         file copy -force $xci_file $dst_xci
+        lappend staged_xci_files [file normalize $dst_xci]
 
         foreach coe_file $coe_files {
             file copy -force $coe_file "$dst_dir/[file tail $coe_file]"
@@ -54,10 +56,16 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
     if {[llength $ips] != 0} {
         upgrade_ip -quiet $ips
         foreach ip $ips {
-            set ip_files [get_files -quiet -of_objects $ip]
+            set ip_files [get_files -quiet -all -of_objects $ip]
             if {[llength $ip_files] == 0} {
                 set ip_name [get_property NAME $ip]
-                set ip_files [get_files -quiet -filter "NAME =~ */$ip_name/$ip_name.xci"]
+                foreach staged_xci $staged_xci_files {
+                    if {[file rootname [file tail $staged_xci]] eq $ip_name} {
+                        foreach candidate [get_files -quiet -all $staged_xci] {
+                            lappend ip_files $candidate
+                        }
+                    }
+                }
             }
             set checkpoint_files 0
             foreach ip_file $ip_files {
@@ -67,10 +75,14 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
                 }
             }
             if {$checkpoint_files == 0} {
-                error "No imported XCI file object found for IP [get_property NAME $ip]"
+                puts "WARNING: no XCI file object found for IP [get_property NAME $ip]; using Vivado default checkpoint handling"
             }
         }
         generate_target all $ips
+        foreach xdc_file [get_files -quiet -all -regexp {.*_in_context\.xdc$}] {
+            set_property USED_IN_SYNTHESIS false $xdc_file
+            set_property USED_IN_IMPLEMENTATION false $xdc_file
+        }
         synth_ip $ips
     }
 }

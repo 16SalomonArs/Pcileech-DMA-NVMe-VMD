@@ -175,6 +175,7 @@ set_property PACKAGE_PIN D7  [get_ports pcie_tx_p[3]]
 
 set_property PACKAGE_PIN F10 [get_ports pcie_clk_p]
 set_property PACKAGE_PIN E10 [get_ports pcie_clk_n]
+set_property LOC IBUFDS_GTE2_X0Y3 [get_cells {i_pcileech_pcie_a7x4/refclk_ibuf}]
 create_clock -period 10.000 -name pcie_sys_clk_p [get_nets pcie_clk_p]
 
 #GENRAL CONFIG

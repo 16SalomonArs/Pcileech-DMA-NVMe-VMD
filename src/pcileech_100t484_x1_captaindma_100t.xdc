@@ -104,6 +104,8 @@ set_property PACKAGE_PIN D7 [get_ports {pcie_tx_p[0]}]
 
 set_property PACKAGE_PIN E10 [get_ports pcie_clk_n]
 set_property PACKAGE_PIN F10 [get_ports pcie_clk_p]
+set_property LOC GTPE2_CHANNEL_X0Y7 [get_cells {i_pcileech_pcie_a7/i_pcie_7x_0/inst/inst/gt_top_i/pipe_wrapper_i/pipe_lane[0].gt_wrapper_i/gtp_channel.gtpe2_channel_i}]
+set_property LOC IBUFDS_GTE2_X0Y3 [get_cells {i_pcileech_pcie_a7/refclk_ibuf}]
 
 create_clock -name pcie_sys_clk_p -period 10.0 [get_nets pcie_clk_p]
 
