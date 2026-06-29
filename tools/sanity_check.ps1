@@ -35,6 +35,7 @@ $profile = Read-RepoText 'src/nvme_board_profile.svh'
 $bar = Read-RepoText 'src/pcileech_tlps128_bar_controller.sv'
 $ft601 = Read-RepoText 'src/pcileech_ft601.sv'
 $tcl = Read-RepoText 'vivado_ip_import.tcl'
+$tcl75 = Read-RepoText 'vivado_generate_project_captain_75T.tcl'
 
 if ($profile -match 'NVME_BACKING_LBAS') {
     Add-Failure 'NVME_BACKING_LBAS must not exist; backing size must derive from NVME_BACKING_SLOT_BITS.'
@@ -69,11 +70,20 @@ if ($tcl -notmatch 'No XCI files found') {
 if ($tcl -match 'No imported XCI file object found') {
     Add-Failure 'Vivado IP import must not hard-fail when a locked IP does not expose an XCI file object.'
 }
+if ($tcl -match '(?m)^\s*synth_ip\b') {
+    Add-Failure 'Vivado project-mode flow must not call synth_ip directly.'
+}
 if ($tcl -notmatch 'USED_IN_SYNTHESIS\s+false') {
     Add-Failure 'Vivado IP import should disable generated in-context clock XDC files for top-level synthesis.'
 }
 if ($tcl -notmatch 'USED_IN_IMPLEMENTATION\s+false') {
     Add-Failure 'Vivado IP import should disable generated in-context clock XDC files for top-level implementation.'
+}
+if ($tcl75 -notmatch 'AreaOptimized_high') {
+    Add-Failure '75T build should use the area-optimized synthesis directive.'
+}
+if ($tcl75 -notmatch 'ExploreArea') {
+    Add-Failure '75T implementation should use an area-oriented opt_design directive.'
 }
 
 $slotMatches = [regex]::Matches($profile, 'NVME_BACKING_SLOT_BITS\s+([0-9]+)')
@@ -84,8 +94,8 @@ foreach ($m in $slotMatches) {
     $slotBits = [int]$m.Groups[1].Value
     $indexBits = $slotBits + 7
     $bankBits = ([int][math]::Pow(2, $indexBits) / 4) * 32
-    if ($slotBits -lt 6 -or $slotBits -gt 9) {
-        Add-Failure "Unsupported NVME_BACKING_SLOT_BITS=$slotBits; expected 6..9 for this Artix-7 profile set."
+    if ($slotBits -lt 4 -or $slotBits -gt 9) {
+        Add-Failure "Unsupported NVME_BACKING_SLOT_BITS=$slotBits; expected 4..9 for this Artix-7 profile set."
     }
     if ($bankBits -ge 1000000) {
         Add-Failure "Backing cache bank is too large for Vivado variable limit: slot_bits=$slotBits bank_bits=$bankBits."

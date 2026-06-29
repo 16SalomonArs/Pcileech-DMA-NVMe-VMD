@@ -83,7 +83,6 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
             set_property USED_IN_SYNTHESIS false $xdc_file
             set_property USED_IN_IMPLEMENTATION false $xdc_file
         }
-        synth_ip $ips
     }
 }
 
