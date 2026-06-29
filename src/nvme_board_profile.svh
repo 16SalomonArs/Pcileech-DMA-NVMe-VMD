@@ -16,8 +16,8 @@
 
 `ifdef NVME_PROFILE_75T
     `define NVME_PROFILE_NAME        "CaptainDMA 75T"
-    `define NVME_BACKING_SLOT_BITS  4
-    `define NVME_PRP_LIST_BITS      3
+    `define NVME_BACKING_SLOT_BITS  1
+    `define NVME_PRP_LIST_BITS      2
     `define NVME_MDTS               8'd2
     `define NVME_MAX_XFER_DW        20'd4096
     `define NVME_DMA_TIMEOUT_CLKS   20'd262143

@@ -85,17 +85,37 @@ if ($tcl75 -notmatch 'AreaOptimized_high') {
 if ($tcl75 -notmatch 'ExploreArea') {
     Add-Failure '75T implementation should use an area-oriented opt_design directive.'
 }
+if ($tcl75 -notmatch 'CONTROL_SET_OPT_THRESHOLD\s+16') {
+    Add-Failure '75T build should enable control-set optimization for slice packing.'
+}
 
 $slotMatches = [regex]::Matches($profile, 'NVME_BACKING_SLOT_BITS\s+([0-9]+)')
 if ($slotMatches.Count -eq 0) {
     Add-Failure 'No NVME_BACKING_SLOT_BITS values found.'
 }
+$profile75 = [regex]::Match($profile, '(?s)`ifdef\s+NVME_PROFILE_75T(.*?)`elsif')
+if (!$profile75.Success) {
+    Add-Failure '75T profile block is missing.'
+} else {
+    $slot75 = [regex]::Match($profile75.Groups[1].Value, 'NVME_BACKING_SLOT_BITS\s+([0-9]+)')
+    $mdts75 = [regex]::Match($profile75.Groups[1].Value, 'NVME_MDTS\s+8''d([0-9]+)')
+    if (!$slot75.Success -or !$mdts75.Success) {
+        Add-Failure '75T profile resource fields are incomplete.'
+    } else {
+        if ([int]$slot75.Groups[1].Value -gt 1) {
+            Add-Failure '75T backing cache is too large for reliable placement on xc7a75t.'
+        }
+        if ([int]$mdts75.Groups[1].Value -gt 2) {
+            Add-Failure '75T MDTS is too large for the lite placement profile.'
+        }
+    }
+}
 foreach ($m in $slotMatches) {
     $slotBits = [int]$m.Groups[1].Value
     $indexBits = $slotBits + 7
     $bankBits = ([int][math]::Pow(2, $indexBits) / 4) * 32
-    if ($slotBits -lt 4 -or $slotBits -gt 9) {
-        Add-Failure "Unsupported NVME_BACKING_SLOT_BITS=$slotBits; expected 4..9 for this Artix-7 profile set."
+    if ($slotBits -lt 1 -or $slotBits -gt 9) {
+        Add-Failure "Unsupported NVME_BACKING_SLOT_BITS=$slotBits; expected 1..9 for this Artix-7 profile set."
     }
     if ($bankBits -ge 1000000) {
         Add-Failure "Backing cache bank is too large for Vivado variable limit: slot_bits=$slotBits bank_bits=$bankBits."
