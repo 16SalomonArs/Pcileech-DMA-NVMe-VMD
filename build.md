@@ -15,6 +15,14 @@ Build time depends heavily on the machine and Vivado version. If Vivado fails in
 
 Maintained project entrypoints are CaptainDMA 75T, CaptainDMA 100T, and ZDMA 100T only. Older Enigma/Immortal generation scripts were removed so the default 100T profile cannot be selected by accident.
 
+Board status:
+
+| Board | Status |
+| --- | --- |
+| CaptainDMA 75T | Build verified with Vivado 2023.2 |
+| CaptainDMA 100T | Build verified with Vivado 2023.2 |
+| ZDMA 100T | Project generation kept; timing and bitstream refresh pending |
+
 The default PCIe profile is Samsung 980 PRO style: `144D:A80A`, subsystem `144D:A801`, class code `010802`, revision `02`. For device ID and BAR changes, use the notes below.
 
 Customizing PCIe device type, vendor ID and product ID:
@@ -40,13 +48,9 @@ rw[127:64]  <= 64'h0000000101000A35;    // cfg_dsn
 
 #### Configuration Space:
 
-The shadow configuration space can be enabled by changing the value below from `1'b1` to `1'b0` in `src/pcileech_fifo.sv`. The maintained configuration-space images live in the active board directory: `ip_captaindma_75t`, `ip_captaindma_100t`, or `ip_zdma_100t`. The Xilinx PCIe core still owns part of configuration space and may override some user values.
+The shadow configuration space is enabled by default in `src/pcileech_fifo.sv`. The maintained configuration-space images live in the active board directory: `ip_captaindma_75t`, `ip_captaindma_100t`, or `ip_zdma_100t`. The Xilinx PCIe core still owns part of configuration space and may override some user values.
 
-In `src/pcileech_fifo.sv` change:
-```verilog
-rw[203]     <= 1'b1;                        //       CFGTLP ZERO DATA
-```
-into:
+The expected setting is:
 ```verilog
 rw[203]     <= 1'b0;                        //       CFGTLP ZERO DATA (0 = CUSTOM CONFIGURATION SPACE ENABLED)
 ```

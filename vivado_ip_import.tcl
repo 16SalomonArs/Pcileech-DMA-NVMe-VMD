@@ -1,8 +1,65 @@
+proc vivado_build_root {origin_dir} {
+    if {[info exists ::env(NVME_VIVADO_BUILD_ROOT)] && $::env(NVME_VIVADO_BUILD_ROOT) ne ""} {
+        return [file normalize $::env(NVME_VIVADO_BUILD_ROOT)]
+    }
+    set origin_path [file normalize $origin_dir]
+    set volume [lindex [file split $origin_path] 0]
+    if {![regexp {^[A-Za-z]:[/\\]?$} $volume]} {
+        return [file normalize [file join [pwd] nvme_vmd_build]]
+    }
+    return [file normalize [file join $volume nvme_vmd_build]]
+}
+
+proc vivado_project_dir {origin_dir project_name} {
+    return [file normalize [file join [vivado_build_root $origin_dir] $project_name]]
+}
+
+proc vivado_job_count {} {
+    if {[info exists ::env(NVME_VIVADO_JOBS)] && [string is integer -strict $::env(NVME_VIVADO_JOBS)] && $::env(NVME_VIVADO_JOBS) > 0} {
+        return $::env(NVME_VIVADO_JOBS)
+    }
+    if {[info exists ::env(NUMBER_OF_PROCESSORS)] && [string is integer -strict $::env(NUMBER_OF_PROCESSORS)] && $::env(NUMBER_OF_PROCESSORS) > 0} {
+        return $::env(NUMBER_OF_PROCESSORS)
+    }
+    return 8
+}
+
+proc vivado_thread_count {} {
+    set jobs [vivado_job_count]
+    if {$jobs > 8} {
+        return 8
+    }
+    return $jobs
+}
+
+proc apply_vivado_runtime_limits {} {
+    set_param general.maxThreads [vivado_thread_count]
+}
+
+proc delete_tree_under {base_dir path} {
+    set base [file normalize $base_dir]
+    set normalized [file normalize $path]
+    set base_prefix "$base/"
+    if {($normalized ne $base) && ([string first $base_prefix $normalized] != 0)} {
+        error "Refusing to clean path outside target root: $normalized"
+    }
+    if {[file exists $normalized]} {
+        file delete -force $normalized
+    }
+}
+
 proc clean_project_tree {origin_dir project_name} {
     set root [file normalize $origin_dir]
-    set root_prefix "$root/"
+    set build_root [vivado_build_root $origin_dir]
     if {[llength [get_projects -quiet]] != 0} {
         close_project
+    }
+    file mkdir $build_root
+    foreach path [list \
+        [vivado_project_dir $origin_dir $project_name] \
+        "$build_root/.Xil" \
+    ] {
+        delete_tree_under $build_root $path
     }
     foreach path [list \
         "$origin_dir/$project_name" \
@@ -14,18 +71,13 @@ proc clean_project_tree {origin_dir project_name} {
         "$origin_dir/$project_name.sim" \
         "$origin_dir/.Xil" \
     ] {
-        set normalized [file normalize $path]
-        if {($normalized ne $root) && ([string first $root_prefix $normalized] != 0)} {
-            error "Refusing to clean path outside project root: $normalized"
-        }
-        if {[file exists $normalized]} {
-            file delete -force $normalized
-        }
+        delete_tree_under $root $path
     }
 }
 
-proc add_staged_board_ip {origin_dir project_name ip_dir} {
-    set stage_dir "$origin_dir/$project_name/$project_name.srcs/sources_1/ip_staged"
+proc add_staged_board_ip {origin_dir project_name ip_dir {skip_ip_names {}}} {
+    set project_dir [vivado_project_dir $origin_dir $project_name]
+    set stage_dir "$project_dir/$project_name.srcs/sources_1/ip_staged"
     file delete -force $stage_dir
     file mkdir $stage_dir
 
@@ -38,6 +90,10 @@ proc add_staged_board_ip {origin_dir project_name ip_dir} {
 
     foreach xci_file $xci_files {
         set ip_name [file rootname [file tail $xci_file]]
+        if {[lsearch -exact $skip_ip_names $ip_name] >= 0} {
+            puts "Skipping board IP $ip_name"
+            continue
+        }
         set dst_dir "$stage_dir/$ip_name"
         set dst_xci "$dst_dir/[file tail $xci_file]"
 
@@ -107,21 +163,24 @@ proc wait_run_or_error {run_name} {
 }
 
 proc build_bitstream_project {origin_dir project_name top_name bin_name} {
-    open_clean_project "$origin_dir/$project_name/$project_name.xpr"
+    set project_dir [vivado_project_dir $origin_dir $project_name]
+    apply_vivado_runtime_limits
+    open_clean_project "$project_dir/$project_name.xpr"
+    set jobs [vivado_job_count]
 
     reset_run synth_1
     reset_run impl_1
-    launch_runs synth_1 -jobs 6
+    launch_runs synth_1 -jobs $jobs
     wait_run_or_error synth_1
 
-    launch_runs impl_1 -to_step write_bitstream -jobs 6
+    launch_runs impl_1 -to_step write_bitstream -jobs $jobs
     wait_run_or_error impl_1
 
     open_run impl_1
     report_utilization -file "$origin_dir/${project_name}_utilization.rpt"
     report_timing_summary -file "$origin_dir/${project_name}_timing_summary.rpt"
 
-    set src_bin "$origin_dir/$project_name/$project_name.runs/impl_1/$top_name.bin"
+    set src_bin "$project_dir/$project_name.runs/impl_1/$top_name.bin"
     if {![file exists $src_bin]} {
         error "Bitstream bin not found: $src_bin"
     }

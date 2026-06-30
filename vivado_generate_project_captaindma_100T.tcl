@@ -8,8 +8,10 @@ set project_name "pcileech_captaindma_100t_nvme"
 set part_name "xc7a100tfgg484-2"
 set ip_dir "$origin_dir/ip_captaindma_100t"
 
+apply_vivado_runtime_limits
 clean_project_tree $origin_dir $project_name
-create_project -force $project_name "$origin_dir/$project_name" -part $part_name
+set project_dir [vivado_project_dir $origin_dir $project_name]
+create_project -force $project_name $project_dir -part $part_name
 set_property target_language Verilog [current_project]
 set_property simulator_language Mixed [current_project]
 set_property verilog_define {NVME_PROFILE_100T} [get_filesets sources_1]

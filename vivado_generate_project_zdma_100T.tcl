@@ -8,8 +8,10 @@ set project_name "pcileech_zdma_100t_nvme"
 set part_name "xc7a100tfgg484-2"
 set ip_dir "$origin_dir/ip_zdma_100t"
 
+apply_vivado_runtime_limits
 clean_project_tree $origin_dir $project_name
-create_project -force $project_name "$origin_dir/$project_name" -part $part_name
+set project_dir [vivado_project_dir $origin_dir $project_name]
+create_project -force $project_name $project_dir -part $part_name
 set_property target_language Verilog [current_project]
 set_property simulator_language Mixed [current_project]
 set_property verilog_define {NVME_PROFILE_ZDMA_100T} [get_filesets sources_1]
@@ -36,7 +38,7 @@ set_property file_type "Verilog Header" [get_files "nvme_board_profile.svh"]
 set_property file_type "SystemVerilog" [get_files -regexp {.*\.sv$}]
 set_property file_type "Verilog" [get_files "pcileech_com_e.v"]
 
-add_staged_board_ip $origin_dir $project_name $ip_dir
+add_staged_board_ip $origin_dir $project_name $ip_dir [list fifo_64_64_clk2_comrx]
 add_files -fileset constrs_1 "$origin_dir/src/pcileech_tbx4_100t.xdc"
 
 set_property top pcileech_tbx4_100t_top [get_filesets sources_1]

@@ -42,10 +42,6 @@ module pcileech_bar_impl_nvme_disk(
     localparam integer BACKING_INDEX_BITS = BACKING_SLOT_BITS + 7;
     localparam integer BACKING_LBAS   = 1 << BACKING_SLOT_BITS; // Volatile FPGA BRAM cache slots.
     localparam integer BACKING_DWORDS = 1 << BACKING_INDEX_BITS;
-    localparam integer BACKING_BANK_BITS = 2;
-    localparam integer BACKING_BANKS = 1 << BACKING_BANK_BITS;
-    localparam integer BACKING_BANK_DWORDS = BACKING_DWORDS / BACKING_BANKS;
-    localparam integer BACKING_BANK_INDEX_BITS = BACKING_INDEX_BITS - BACKING_BANK_BITS;
     localparam integer PRP_LIST_BITS = `NVME_PRP_LIST_BITS;
     localparam integer PRP_LIST_ENTRIES = 1 << PRP_LIST_BITS;
     localparam [7:0]   BACKING_SLOT_BITS_U8 = BACKING_SLOT_BITS;
@@ -107,6 +103,12 @@ module pcileech_bar_impl_nvme_disk(
     localparam [7:0] ST_DSM_FETCH_REQ  = 8'd17;
     localparam [7:0] ST_DSM_FETCH_WAIT = 8'd18;
     localparam [7:0] ST_DSM_INVALIDATE = 8'd19;
+    localparam [7:0] ST_HOST_WRITE_ADDR= 8'd20;
+    localparam [7:0] ST_HOST_READ_ADDR = 8'd21;
+    localparam [7:0] ST_DSM_FETCH_ADDR = 8'd22;
+    localparam [7:0] ST_DSM_VALIDATE_0 = 8'd23;
+    localparam [7:0] ST_DSM_VALIDATE_1 = 8'd24;
+    localparam [7:0] ST_DSM_VALIDATE_2 = 8'd25;
 
     localparam [3:0] PAYLOAD_ZERO       = 4'd0;
     localparam [3:0] PAYLOAD_IDENT_CTL  = 4'd1;
@@ -128,10 +130,7 @@ module pcileech_bar_impl_nvme_disk(
     localparam [31:0] AER_RESULT_SMART_TEMP  = 32'h00020101;
     localparam [31:0] AER_RESULT_SMART_MEDIA = 32'h00020201;
 
-    (* ram_style = "block" *) bit [31:0] block_store0 [0:BACKING_BANK_DWORDS-1];
-    (* ram_style = "block" *) bit [31:0] block_store1 [0:BACKING_BANK_DWORDS-1];
-    (* ram_style = "block" *) bit [31:0] block_store2 [0:BACKING_BANK_DWORDS-1];
-    (* ram_style = "block" *) bit [31:0] block_store3 [0:BACKING_BANK_DWORDS-1];
+    (* ram_style = "block" *) reg [31:0] block_store [0:BACKING_DWORDS-1];
     bit        block_valid [0:BACKING_LBAS-1];
     bit [63:0] block_tag   [0:BACKING_LBAS-1];
     bit [31:0] cmd_dw [0:15];
@@ -256,7 +255,12 @@ module pcileech_bar_impl_nvme_disk(
     bit [31:0] dsm_dw1;
     bit [31:0] dsm_dw2;
     bit [63:0] dsm_lba;
+    bit [63:0] dsm_lba_limit;
+    bit [63:0] dsm_disk_remaining;
     bit [31:0] dsm_range_blocks;
+    bit        dsm_range_empty;
+    bit        dsm_lba_in_range;
+    bit        dsm_range_ok_stage;
     bit [19:0] wait_timer;
     bit [19:0] cq_full_timer;
     bit        aer_pending;
@@ -284,6 +288,8 @@ module pcileech_bar_impl_nvme_disk(
     bit [3:0] tx_second_keepdw;
     bit        tx_second_last;
     bit        tx_done;
+    bit [63:0] dma_addr_stage;
+    bit [31:0] dma_data_stage;
 
     bit        cpl_valid;
     bit        cpl_error;
@@ -297,11 +303,8 @@ module pcileech_bar_impl_nvme_disk(
     integer init_lba;
     integer init_err;
     initial begin
-        for (init_i = 0; init_i < BACKING_BANK_DWORDS; init_i = init_i + 1) begin
-            block_store0[init_i] = 32'h00000000;
-            block_store1[init_i] = 32'h00000000;
-            block_store2[init_i] = 32'h00000000;
-            block_store3[init_i] = 32'h00000000;
+        for (init_i = 0; init_i < BACKING_DWORDS; init_i = init_i + 1) begin
+            block_store[init_i] = 32'h00000000;
         end
         for (init_lba = 0; init_lba < BACKING_LBAS; init_lba = init_lba + 1) begin
             block_valid[init_lba] = 1'b0;
@@ -362,17 +365,6 @@ module pcileech_bar_impl_nvme_disk(
         input [15:0] size;
         begin
             q_next = ((val + 16'd1) >= size) ? 16'd0 : (val + 16'd1);
-        end
-    endfunction
-
-    function automatic [15:0] data_units_for_nlb;
-        input [15:0] nlb;
-        reg [31:0] blocks;
-        reg [31:0] unit_count;
-        begin
-            blocks = {16'h0000, nlb} + 32'd1;
-            unit_count = (blocks + 32'd999) / 32'd1000;
-            data_units_for_nlb = unit_count[15:0];
         end
     endfunction
 
@@ -709,20 +701,6 @@ module pcileech_bar_impl_nvme_disk(
         end
     endfunction
 
-    function automatic [BACKING_BANK_BITS-1:0] backing_bank;
-        input [BACKING_INDEX_BITS-1:0] idx;
-        begin
-            backing_bank = idx[BACKING_INDEX_BITS-1 -: BACKING_BANK_BITS];
-        end
-    endfunction
-
-    function automatic [BACKING_BANK_INDEX_BITS-1:0] backing_bank_index;
-        input [BACKING_INDEX_BITS-1:0] idx;
-        begin
-            backing_bank_index = idx[BACKING_BANK_INDEX_BITS-1:0];
-        end
-    endfunction
-
     function automatic [63:0] xfer_lba_offset;
         input [19:0] idx;
         begin
@@ -737,89 +715,46 @@ module pcileech_bar_impl_nvme_disk(
         end
     endfunction
 
-    task automatic read_backing_word;
-        input [BACKING_INDEX_BITS-1:0] idx;
-        begin
-            case (backing_bank(idx))
-                2'd0: disk_rd_data <= block_store0[backing_bank_index(idx)];
-                2'd1: disk_rd_data <= block_store1[backing_bank_index(idx)];
-                2'd2: disk_rd_data <= block_store2[backing_bank_index(idx)];
-                default: disk_rd_data <= block_store3[backing_bank_index(idx)];
-            endcase
-        end
-    endtask
+    wire [63:0] backing_read_lba = cmd_slba + xfer_lba_offset(xfer_idx);
+    wire [6:0]  backing_read_word_off = xfer_idx[6:0];
+    wire [BACKING_SLOT_BITS-1:0] backing_read_slot = backing_slot(backing_read_lba);
+    wire [BACKING_INDEX_BITS-1:0] backing_read_index = backing_index(backing_read_lba, backing_read_word_off);
 
-    task automatic write_backing_word;
-        input [BACKING_INDEX_BITS-1:0] idx;
-        input [31:0] data;
-        begin
-            case (backing_bank(idx))
-                2'd0: block_store0[backing_bank_index(idx)] <= data;
-                2'd1: block_store1[backing_bank_index(idx)] <= data;
-                2'd2: block_store2[backing_bank_index(idx)] <= data;
-                default: block_store3[backing_bank_index(idx)] <= data;
-            endcase
-        end
-    endtask
+    wire [63:0] backing_store_lba = cmd_slba + xfer_lba_offset(xfer_idx);
+    wire [6:0]  backing_store_word_off = xfer_idx[6:0];
+    wire [BACKING_SLOT_BITS-1:0] backing_store_slot = backing_slot(backing_store_lba);
+    wire [BACKING_INDEX_BITS-1:0] backing_store_index = backing_index(backing_store_lba, backing_store_word_off);
 
-    task automatic read_disk_word;
-        input [19:0] idx;
-        reg [63:0] lba;
-        reg [6:0]  word_off;
-        reg [BACKING_SLOT_BITS-1:0] slot;
-        begin
-            lba = cmd_slba + xfer_lba_offset(idx);
-            word_off = idx[6:0];
-            slot = backing_slot(lba);
-            if (block_valid[slot] && (block_tag[slot] == lba))
-                read_backing_word(backing_index(lba, word_off));
-            else
-                disk_rd_data <= 32'h00000000;
-        end
-    endtask
+    wire [63:0] backing_zero_lba = cmd_slba + backing_lba_offset(clear_idx);
+    wire [6:0]  backing_zero_word_off = clear_idx[6:0];
+    wire [BACKING_SLOT_BITS-1:0] backing_zero_slot = backing_slot(backing_zero_lba);
+    wire [BACKING_INDEX_BITS-1:0] backing_zero_index = backing_index(backing_zero_lba, backing_zero_word_off);
 
-    task automatic store_disk_word;
-        input [19:0] idx;
-        input [31:0] data;
-        reg [63:0] lba;
-        reg [6:0]  word_off;
-        reg [BACKING_SLOT_BITS-1:0] slot;
-        begin
-            lba = cmd_slba + xfer_lba_offset(idx);
-            word_off = idx[6:0];
-            slot = backing_slot(lba);
-            if ((word_off == 7'h00) && block_valid[slot] && (block_tag[slot] != lba))
-                stat_backend_evictions <= stat_backend_evictions + 64'd1;
-            block_valid[slot] <= 1'b1;
-            block_tag[slot] <= lba;
-            write_backing_word(backing_index(lba, word_off), data);
-        end
-    endtask
+    wire backing_store_fire  = (state == ST_HOST_READ_WAIT) && cpl_valid;
+    wire backing_format_fire = (state == ST_FORMAT_CLEAR);
+    wire backing_zero_fire   = (state == ST_ZERO_CLEAR);
+    wire backing_wr_en       = backing_store_fire || backing_format_fire || backing_zero_fire;
+    wire [BACKING_INDEX_BITS-1:0] backing_wr_addr =
+        backing_store_fire ? backing_store_index :
+        backing_zero_fire  ? backing_zero_index :
+                             clear_idx[BACKING_INDEX_BITS-1:0];
+    wire [31:0] backing_wr_data = backing_store_fire ? cpl_data : 32'h00000000;
 
-    task automatic zero_disk_word_at;
-        input [63:0] base_lba;
-        input [BACKING_INDEX_BITS:0] idx;
-        reg [63:0] lba;
-        reg [6:0]  word_off;
-        reg [BACKING_SLOT_BITS-1:0] slot;
-        begin
-            lba = base_lba + backing_lba_offset(idx);
-            word_off = idx[6:0];
-            slot = backing_slot(lba);
-            if ((word_off == 7'h00) && block_valid[slot] && (block_tag[slot] != lba))
-                stat_backend_evictions <= stat_backend_evictions + 64'd1;
-            block_valid[slot] <= 1'b1;
-            block_tag[slot] <= lba;
-            write_backing_word(backing_index(lba, word_off), 32'h00000000);
+    always @ (posedge clk) begin
+        if (rst) begin
+            disk_rd_data <= 32'h00000000;
         end
-    endtask
-
-    task automatic zero_disk_word;
-        input [BACKING_INDEX_BITS:0] idx;
-        begin
-            zero_disk_word_at(cmd_slba, idx);
+        else begin
+            if (state == ST_DISK_READ) begin
+                if (block_valid[backing_read_slot] && (block_tag[backing_read_slot] == backing_read_lba))
+                    disk_rd_data <= block_store[backing_read_index];
+                else
+                    disk_rd_data <= 32'h00000000;
+            end
+            if (backing_wr_en)
+                block_store[backing_wr_addr] <= backing_wr_data;
         end
-    endtask
+    end
 
     task automatic prepare_prp_transfer;
         input [63:0] prp1;
@@ -840,7 +775,6 @@ module pcileech_bar_impl_nvme_disk(
                 prp_fetch_idx   <= {PRP_LIST_BITS{1'b0}};
                 prp_fetch_last  <= last_entry[PRP_LIST_BITS-1:0];
                 prp_fetch_dw    <= 1'b0;
-                stat_prp_list_fetches <= stat_prp_list_fetches + {56'h00000000000000, last_entry} + 64'd1;
                 state           <= ST_PRP_LIST_REQ;
             end
             else begin
@@ -1288,7 +1222,6 @@ module pcileech_bar_impl_nvme_disk(
             xfer_total_dw      <= 20'h00000;
             xfer_after_prp_state <= ST_IDLE;
             xfer_payload       <= PAYLOAD_ZERO;
-            disk_rd_data       <= 32'h00000000;
             prp_list_active    <= 1'b0;
             prp_fetch_idx      <= {PRP_LIST_BITS{1'b0}};
             prp_fetch_last     <= {PRP_LIST_BITS{1'b0}};
@@ -1354,7 +1287,12 @@ module pcileech_bar_impl_nvme_disk(
             dsm_dw1           <= 32'h00000000;
             dsm_dw2           <= 32'h00000000;
             dsm_lba           <= 64'h0000000000000000;
+            dsm_lba_limit     <= 64'h0000000000000000;
+            dsm_disk_remaining <= 64'h0000000000000000;
             dsm_range_blocks  <= 32'h00000000;
+            dsm_range_empty   <= 1'b0;
+            dsm_lba_in_range  <= 1'b0;
+            dsm_range_ok_stage <= 1'b0;
             wait_timer        <= 20'h00000;
             cq_full_timer     <= 20'h00000;
             aer_pending       <= 1'b0;
@@ -1381,6 +1319,8 @@ module pcileech_bar_impl_nvme_disk(
             tx_second_last     <= 1'b0;
             tx_second_data     <= 128'h0;
             tx_done            <= 1'b0;
+            dma_addr_stage     <= 64'h0000000000000000;
+            dma_data_stage     <= 32'h00000000;
             cpl_expected       <= 1'b0;
             cpl_expected_tag   <= 8'h00;
             cpl_expected_byte_count <= 12'h000;
@@ -2127,8 +2067,7 @@ module pcileech_bar_impl_nvme_disk(
                             8'h01: begin
                                 if (cmd_lba_ok) begin
                                     stat_host_write_cmds <= stat_host_write_cmds + 64'd1;
-                                    stat_data_units_written <= stat_data_units_written +
-                                                               {48'h000000000000, data_units_for_nlb(cmd_nlb)};
+                                    stat_data_units_written <= stat_data_units_written + 64'd1;
                                     if (thermal_load < 8'he0)
                                         thermal_load <= thermal_load + 8'd2;
                                     xfer_prp1     <= cmd_prp1;
@@ -2146,8 +2085,7 @@ module pcileech_bar_impl_nvme_disk(
                             8'h02: begin
                                 if (cmd_lba_ok) begin
                                     stat_host_read_cmds <= stat_host_read_cmds + 64'd1;
-                                    stat_data_units_read <= stat_data_units_read +
-                                                            {48'h000000000000, data_units_for_nlb(cmd_nlb)};
+                                    stat_data_units_read <= stat_data_units_read + 64'd1;
                                     if (thermal_load < 8'he0)
                                         thermal_load <= thermal_load + 8'd2;
                                     xfer_prp1     <= cmd_prp1;
@@ -2254,6 +2192,7 @@ module pcileech_bar_impl_nvme_disk(
                         else begin
                             prp_list[prp_fetch_idx][63:32] <= cpl_data;
                             prp_fetch_dw <= 1'b0;
+                            stat_prp_list_fetches <= stat_prp_list_fetches + 64'd1;
                             if (prp_list_entry_invalid({cpl_data, prp_list[prp_fetch_idx][31:0]})) begin
                                 cqe_status <= NVME_SC_PRP_OFFSET_INVALID;
                                 record_error(NVME_SC_PRP_OFFSET_INVALID, 1'b0);
@@ -2282,7 +2221,15 @@ module pcileech_bar_impl_nvme_disk(
 
                 ST_HOST_WRITE_REQ: begin
                     if (!tx_valid) begin
-                        start_mwr1(prp_addr(xfer_prp1, xfer_prp2, xfer_idx), payload_word(xfer_payload, xfer_idx));
+                        dma_addr_stage <= prp_addr(xfer_prp1, xfer_prp2, xfer_idx);
+                        dma_data_stage <= payload_word(xfer_payload, xfer_idx);
+                        state <= ST_HOST_WRITE_ADDR;
+                    end
+                end
+
+                ST_HOST_WRITE_ADDR: begin
+                    if (!tx_valid) begin
+                        start_mwr1(dma_addr_stage, dma_data_stage);
                         wait_timer <= 20'h00000;
                         state <= ST_HOST_WRITE_WAIT;
                     end
@@ -2310,13 +2257,19 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_DISK_READ: begin
-                    read_disk_word(xfer_idx);
                     state <= ST_HOST_WRITE_REQ;
                 end
 
                 ST_HOST_READ_REQ: begin
                     if (!tx_valid) begin
-                        start_mrd1(prp_addr(xfer_prp1, xfer_prp2, xfer_idx), DMA_TAG);
+                        dma_addr_stage <= prp_addr(xfer_prp1, xfer_prp2, xfer_idx);
+                        state <= ST_HOST_READ_ADDR;
+                    end
+                end
+
+                ST_HOST_READ_ADDR: begin
+                    if (!tx_valid) begin
+                        start_mrd1(dma_addr_stage, DMA_TAG);
                         wait_timer <= 20'h00000;
                         state <= ST_HOST_READ_WAIT;
                     end
@@ -2332,7 +2285,13 @@ module pcileech_bar_impl_nvme_disk(
                     end
                     else if (cpl_valid) begin
                         cpl_expected <= 1'b0;
-                        store_disk_word(xfer_idx, cpl_data);
+                        if ((backing_store_word_off == 7'h00) &&
+                            block_valid[backing_store_slot] &&
+                            (block_tag[backing_store_slot] != backing_store_lba)) begin
+                            stat_backend_evictions <= stat_backend_evictions + 64'd1;
+                        end
+                        block_valid[backing_store_slot] <= 1'b1;
+                        block_tag[backing_store_slot] <= backing_store_lba;
                         if ((xfer_idx + 20'd1) >= xfer_total_dw) begin
                             state <= ST_CQE_REQ;
                         end
@@ -2354,7 +2313,6 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_FORMAT_CLEAR: begin
-                    write_backing_word(clear_idx[BACKING_INDEX_BITS-1:0], 32'h00000000);
                     if (clear_idx[6:0] == 7'h00) begin
                         block_valid[clear_idx[BACKING_INDEX_BITS-1:7]] <= 1'b0;
                         block_tag[clear_idx[BACKING_INDEX_BITS-1:7]] <= 64'h0000000000000000;
@@ -2368,7 +2326,13 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_ZERO_CLEAR: begin
-                    zero_disk_word(clear_idx);
+                    if ((backing_zero_word_off == 7'h00) &&
+                        block_valid[backing_zero_slot] &&
+                        (block_tag[backing_zero_slot] != backing_zero_lba)) begin
+                        stat_backend_evictions <= stat_backend_evictions + 64'd1;
+                    end
+                    block_valid[backing_zero_slot] <= 1'b1;
+                    block_tag[backing_zero_slot] <= backing_zero_lba;
                     if ((clear_idx + BACKING_ONE) >= clear_total_dw) begin
                         state <= ST_CQE_REQ;
                     end
@@ -2379,10 +2343,14 @@ module pcileech_bar_impl_nvme_disk(
 
                 ST_DSM_FETCH_REQ: begin
                     if (!tx_valid) begin
-                        start_mrd1(
-                            prp_addr(xfer_prp1, xfer_prp2, {10'h000, dsm_range_idx, dsm_dw_idx}),
-                            DMA_TAG
-                        );
+                        dma_addr_stage <= prp_addr(xfer_prp1, xfer_prp2, {10'h000, dsm_range_idx, dsm_dw_idx});
+                        state <= ST_DSM_FETCH_ADDR;
+                    end
+                end
+
+                ST_DSM_FETCH_ADDR: begin
+                    if (!tx_valid) begin
+                        start_mrd1(dma_addr_stage, DMA_TAG);
                         wait_timer <= 20'h00000;
                         state <= ST_DSM_FETCH_WAIT;
                     end
@@ -2415,28 +2383,10 @@ module pcileech_bar_impl_nvme_disk(
                                 state      <= ST_DSM_FETCH_REQ;
                             end
                             default: begin
-                                dsm_lba <= {cpl_data, dsm_dw2};
-                                if (dsm_dw1 == 32'h00000000) begin
-                                    if (dsm_range_idx == dsm_range_last) begin
-                                        state <= ST_CQE_REQ;
-                                    end
-                                    else begin
-                                        dsm_range_idx <= dsm_range_idx + 8'd1;
-                                        dsm_dw_idx    <= 2'd0;
-                                        state         <= ST_DSM_FETCH_REQ;
-                                    end
-                                end
-                                else if (lba_range_ok(32'd1, {cpl_data, dsm_dw2}, dsm_dw1)) begin
-                                    clear_idx        <= {BACKING_INDEX_BITS+1{1'b0}};
-                                    dsm_range_blocks <= dsm_dw1;
-                                    state            <= ST_DSM_INVALIDATE;
-                                end
-                                else begin
-                                    cqe_status <= NVME_SC_LBA_RANGE;
-                                    record_error(NVME_SC_LBA_RANGE, 1'b0);
-                                    stat_last_error_lba <= {cpl_data, dsm_dw2};
-                                    state      <= ST_CQE_REQ;
-                                end
+                                dsm_lba          <= {cpl_data, dsm_dw2};
+                                dsm_range_blocks <= dsm_dw1;
+                                dsm_range_empty  <= (dsm_dw1 == 32'h00000000);
+                                state            <= ST_DSM_VALIDATE_0;
                             end
                         endcase
                     end
@@ -2452,10 +2402,45 @@ module pcileech_bar_impl_nvme_disk(
                     end
                 end
 
+                ST_DSM_VALIDATE_0: begin
+                    dsm_lba_in_range   <= (dsm_lba < DISK_LBAS);
+                    dsm_disk_remaining <= DISK_LBAS - dsm_lba;
+                    dsm_lba_limit      <= dsm_lba + {32'h00000000, dsm_range_blocks};
+                    state              <= ST_DSM_VALIDATE_1;
+                end
+
+                ST_DSM_VALIDATE_1: begin
+                    dsm_range_ok_stage <= dsm_lba_in_range && (dsm_range_blocks <= dsm_disk_remaining[31:0]);
+                    state              <= ST_DSM_VALIDATE_2;
+                end
+
+                ST_DSM_VALIDATE_2: begin
+                    if (dsm_range_empty) begin
+                        if (dsm_range_idx == dsm_range_last) begin
+                            state <= ST_CQE_REQ;
+                        end
+                        else begin
+                            dsm_range_idx <= dsm_range_idx + 8'd1;
+                            dsm_dw_idx    <= 2'd0;
+                            state         <= ST_DSM_FETCH_REQ;
+                        end
+                    end
+                    else if (dsm_range_ok_stage) begin
+                        clear_idx <= {BACKING_INDEX_BITS+1{1'b0}};
+                        state     <= ST_DSM_INVALIDATE;
+                    end
+                    else begin
+                        cqe_status <= NVME_SC_LBA_RANGE;
+                        record_error(NVME_SC_LBA_RANGE, 1'b0);
+                        stat_last_error_lba <= dsm_lba;
+                        state      <= ST_CQE_REQ;
+                    end
+                end
+
                 ST_DSM_INVALIDATE: begin
                     if (block_valid[clear_idx[BACKING_SLOT_BITS-1:0]] &&
                         (block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] >= dsm_lba) &&
-                        (block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] < (dsm_lba + {32'h00000000, dsm_range_blocks}))) begin
+                        (block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] < dsm_lba_limit)) begin
                         block_valid[clear_idx[BACKING_SLOT_BITS-1:0]] <= 1'b0;
                         block_tag[clear_idx[BACKING_SLOT_BITS-1:0]]   <= 64'h0000000000000000;
                     end

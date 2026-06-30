@@ -8,13 +8,15 @@ set project_name "pcileech_captaindma_75t_nvme"
 set part_name "xc7a75tfgg484-2"
 set ip_dir "$origin_dir/ip_captaindma_75t"
 
+apply_vivado_runtime_limits
 clean_project_tree $origin_dir $project_name
-create_project -force $project_name "$origin_dir/$project_name" -part $part_name
+set project_dir [vivado_project_dir $origin_dir $project_name]
+create_project -force $project_name $project_dir -part $part_name
 set_property target_language Verilog [current_project]
 set_property simulator_language Mixed [current_project]
 set_property verilog_define {NVME_PROFILE_75T} [get_filesets sources_1]
 set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY none [get_runs synth_1]
-set_property STEPS.SYNTH_DESIGN.ARGS.DIRECTIVE AreaOptimized_high [get_runs synth_1]
+set_property STEPS.SYNTH_DESIGN.ARGS.DIRECTIVE RuntimeOptimized [get_runs synth_1]
 set_property STEPS.SYNTH_DESIGN.ARGS.CONTROL_SET_OPT_THRESHOLD 16 [get_runs synth_1]
 set_property STEPS.OPT_DESIGN.ARGS.DIRECTIVE ExploreArea [get_runs impl_1]
 
