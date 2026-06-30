@@ -16,6 +16,8 @@
 ## Requirements
 
 - Intel CPU, 11th generation or newer, in the host where the DMA card is installed.
-- Intel VMD (Virtual RAID on CPU) enabled in BIOS.
+- Intel VMD (Virtual RAID on CPU) enabled in BIOS for the physical PCIe port or M.2 adapter path used by the DMA card.
 - Matching Intel RST/VMD drivers installed on Windows.
 - A clean Windows install may be required for correct driver initialization and device recognition.
+
+If Windows loads the board as a working NVMe controller outside Intel VMD, the board is outside the VMD-remapped port path. Move it to a slot or adapter path mapped under VMD, or enable VMD for that exact root port in BIOS. If it appears as a SCSI or other storage controller with no NVMe driver, rebuild from the maintained profiles so the PCIe IP class code is `010802`.

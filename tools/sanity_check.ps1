@@ -55,6 +55,8 @@ $pcieCfg = Read-RepoText 'src/pcileech_pcie_cfg_a7.sv'
 $tcl = Read-RepoText 'vivado_ip_import.tcl'
 $tcl75 = Read-RepoText 'vivado_generate_project_captain_75T.tcl'
 $tclZdma = Read-RepoText 'vivado_generate_project_zdma_100T.tcl'
+$readme = Read-RepoText 'README.md'
+$buildDoc = Read-RepoText 'build.md'
 
 if ($profile -match 'NVME_BACKING_LBAS') {
     Add-Failure 'NVME_BACKING_LBAS must not exist; backing size must derive from NVME_BACKING_SLOT_BITS.'
@@ -91,6 +93,15 @@ if ($nvme -match '/\s*32''d1000') {
 }
 if ($pcieCfg -match 'rw\[21\]\s*<=\s*1') {
     Add-Failure 'PCIe command register auto-set must be disabled at reset; the host must own Memory Space and Bus Master enable.'
+}
+if ($profile -notmatch 'NVME_PCI_CLASS_CODE\s+24''h010802') {
+    Add-Failure 'NVMe board profile must keep the host-visible PCIe class code at 010802.'
+}
+if ($readme -notmatch 'physical PCIe port or M\.2 adapter path') {
+    Add-Failure 'README must state that VMD has to be enabled for the physical port used by the board.'
+}
+if ($buildDoc -notmatch 'Keep the endpoint class as `010802`') {
+    Add-Failure 'Build notes must keep VMD placement guidance separate from endpoint class changes.'
 }
 if ($tcl -match 'GENERATE_SYNTH_CHECKPOINT\s+true\s+\$ips') {
     Add-Failure 'GENERATE_SYNTH_CHECKPOINT is being set on get_ips output instead of XCI file objects.'
@@ -267,9 +278,10 @@ foreach ($dir in $boardDirs) {
         Revision_ID = '02'
         Subsystem_Vendor_ID = '144D'
         Subsystem_ID = 'A801'
+        Use_Class_Code_Lookup_Assistant = 'false'
         Class_Code_Base = '01'
-        Class_Code_Sub = '00'
-        Class_Code_Interface = '00'
+        Class_Code_Sub = '08'
+        Class_Code_Interface = '02'
         Bar0_Enabled = 'true'
         Bar0_Type = 'Memory'
         Bar0_64bit = 'false'
@@ -281,6 +293,34 @@ foreach ($dir in $boardDirs) {
         $actual = Get-XciParam $params $key
         if ($actual -ne $expect[$key]) {
             Add-Failure "$dir pcie_7x_0.xci $key expected $($expect[$key]), got $actual."
+        }
+    }
+    $modelParams = $json.ip_inst.parameters.model_parameters
+    $modelExpect = @{
+        ven_id = '144D'
+        dev_id = 'A80A'
+        rev_id = '02'
+        subsys_ven_id = '144D'
+        subsys_id = 'A801'
+        class_code = '010802'
+        bar_0 = 'FFF00000'
+        bar_1 = '00000000'
+        bar_2 = '00000000'
+        bar_3 = '00000000'
+        bar_4 = '00000000'
+        bar_5 = '00000000'
+        xrom_bar = '00000000'
+        c_msix_cap_on = 'TRUE'
+        c_msix_table_size = '001'
+        c_msix_table_offset = '3000'
+        c_msix_table_bir = '0'
+        c_msix_pba_offset = '3800'
+        c_msix_pba_bir = '0'
+    }
+    foreach ($key in $modelExpect.Keys) {
+        $actual = Get-XciParam $modelParams $key
+        if ($actual -ne $modelExpect[$key]) {
+            Add-Failure "$dir pcie_7x_0.xci generated $key expected $($modelExpect[$key]), got $actual."
         }
     }
 
@@ -309,6 +349,20 @@ foreach ($dir in $boardDirs) {
                 Add-Failure "$dir cfgspace $($item.Name) at 0x$($item.Offset.ToString('X2')) expected $($item.Value), got $($cfgWords[$index])."
             }
         }
+    }
+}
+
+$staticPcieWrapper = Join-Path $Root 'pcie_7x/pcie_7x_0.v'
+if (Test-Path -LiteralPath $staticPcieWrapper) {
+    $staticPcie = Get-Content -LiteralPath $staticPcieWrapper -Raw
+    if ($staticPcie -notmatch '\.class_code\("010802"\)') {
+        Add-Failure 'Static pcie_7x wrapper must keep class_code("010802").'
+    }
+    if ($staticPcie -notmatch '\.c_msix_table_offset\("3000"\)') {
+        Add-Failure 'Static pcie_7x wrapper must keep MSI-X table offset at 0x3000.'
+    }
+    if ($staticPcie -notmatch '\.c_msix_pba_offset\("3800"\)') {
+        Add-Failure 'Static pcie_7x wrapper must keep MSI-X PBA offset at 0x3800.'
     }
 }
 

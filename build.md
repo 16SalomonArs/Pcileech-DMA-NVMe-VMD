@@ -25,6 +25,10 @@ Board status:
 
 The default PCIe profile is Samsung 980 PRO style: `144D:A80A`, subsystem `144D:A801`, class code `010802`, revision `02`. For device ID and BAR changes, use the notes below.
 
+Host VMD placement:
+=================
+The endpoint is an NVMe device, not an Intel VMD controller. Intel VMD ownership is selected by the host BIOS for a specific root port or port group. If Windows loads the board as a working NVMe controller while VMD is enabled, but outside the VMD controller tree, the board is not under the VMD-remapped port path. If Windows lists it as a SCSI or other storage controller with no NVMe driver, the active bitstream was built with the wrong PCIe IP class code. Keep the endpoint class as `010802`; use a VMD-mapped slot or adapter path for VMD ownership.
+
 Customizing PCIe device type, vendor ID and product ID:
 =================
 Many device type / vendor / product combinations can stop a host from booting or make the PCIe bus unstable. If that happens, power down and use a different profile.
