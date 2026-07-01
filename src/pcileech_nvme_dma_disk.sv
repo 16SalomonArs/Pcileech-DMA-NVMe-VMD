@@ -118,14 +118,18 @@ module pcileech_bar_impl_nvme_disk(
     localparam [3:0] PAYLOAD_SMART_LOG  = 4'd5;
     localparam [3:0] PAYLOAD_ERROR_LOG  = 4'd6;
     localparam [3:0] PAYLOAD_LOG_PAGES  = 4'd7;
+`ifdef NVME_ENABLE_VENDOR_LOG
     localparam [3:0] PAYLOAD_VENDOR_LOG = 4'd8;
+`endif
     localparam [3:0] PAYLOAD_FW_SLOT_LOG = 4'd9;
     localparam [7:0] LOG_PAGE_SUPPORTED = 8'h00;
     localparam [7:0] LOG_PAGE_ERROR     = 8'h01;
     localparam [7:0] LOG_PAGE_SMART     = 8'h02;
     localparam [7:0] LOG_PAGE_FW_SLOT   = 8'h03;
+`ifdef NVME_ENABLE_VENDOR_LOG
     localparam [7:0] LOG_PAGE_VENDOR_C0 = 8'hc0;
     localparam [7:0] LOG_PAGE_VENDOR_C0_DW = 8'h30;
+`endif
     localparam [31:0] AER_RESULT_ERROR_LOG   = 32'h00010000;
     localparam [31:0] AER_RESULT_SMART_TEMP  = 32'h00020101;
     localparam [31:0] AER_RESULT_SMART_MEDIA = 32'h00020201;
@@ -591,34 +595,58 @@ module pcileech_bar_impl_nvme_disk(
         end
     endfunction
 
+    function automatic [31:0] power_state_word;
+        input [2:0] ps;
+        input [2:0] dw;
+        begin
+            case ({ps, dw})
+                6'o00: power_state_word = 32'h00000320;
+                6'o03: power_state_word = 32'h00000000;
+                6'o10: power_state_word = 32'h00000258;
+                6'o13: power_state_word = 32'h01010101;
+                6'o20: power_state_word = 32'h000001f4;
+                6'o23: power_state_word = 32'h02020202;
+                6'o30: power_state_word = 32'h01000046;
+                6'o31: power_state_word = 32'h00001388;
+                6'o32: power_state_word = 32'h00001388;
+                6'o33: power_state_word = 32'h03030303;
+                6'o40: power_state_word = 32'h01000005;
+                6'o41: power_state_word = 32'h00009c40;
+                6'o42: power_state_word = 32'h00009c40;
+                6'o43: power_state_word = 32'h04040404;
+                default: power_state_word = 32'h00000000;
+            endcase
+        end
+    endfunction
+
     function automatic [31:0] identify_ctrl_word;
         input [9:0] idx;
         begin
             case (idx)
                 10'd0:   identify_ctrl_word = {`NVME_PCI_SUBSYS_VENDOR_ID, `NVME_PCI_VENDOR_ID};
-                10'd1:   identify_ctrl_word = ascii4("S","6","P","Y");
-                10'd2:   identify_ctrl_word = ascii4("N","J","0","T");
-                10'd3:   identify_ctrl_word = ascii4("1","2","3","4");
-                10'd4:   identify_ctrl_word = ascii4("5","6","X"," ");
-                10'd5:   identify_ctrl_word = ascii4(" "," "," "," ");
-                10'd6:   identify_ctrl_word = ascii4("S","a","m","s");
-                10'd7:   identify_ctrl_word = ascii4("u","n","g"," ");
-                10'd8:   identify_ctrl_word = ascii4("S","S","D"," ");
-                10'd9:   identify_ctrl_word = ascii4("9","8","0"," ");
-                10'd10:  identify_ctrl_word = ascii4("P","R","O"," ");
-                10'd11:  identify_ctrl_word = ascii4(" "," "," "," ");
-                10'd12:  identify_ctrl_word = ascii4(" "," "," "," ");
-                10'd13:  identify_ctrl_word = ascii4(" "," "," "," ");
-                10'd14:  identify_ctrl_word = ascii4(" "," "," "," ");
-                10'd15:  identify_ctrl_word = ascii4(" "," "," "," ");
-                10'd16:  identify_ctrl_word = ascii4("5","B","2","Q");
-                10'd17:  identify_ctrl_word = ascii4("G","X","A","7");
+                10'd1:   identify_ctrl_word = `NVME_CTRL_SERIAL_DW0;
+                10'd2:   identify_ctrl_word = `NVME_CTRL_SERIAL_DW1;
+                10'd3:   identify_ctrl_word = `NVME_CTRL_SERIAL_DW2;
+                10'd4:   identify_ctrl_word = `NVME_CTRL_SERIAL_DW3;
+                10'd5:   identify_ctrl_word = `NVME_CTRL_SERIAL_DW4;
+                10'd6:   identify_ctrl_word = `NVME_CTRL_MODEL_DW0;
+                10'd7:   identify_ctrl_word = `NVME_CTRL_MODEL_DW1;
+                10'd8:   identify_ctrl_word = `NVME_CTRL_MODEL_DW2;
+                10'd9:   identify_ctrl_word = `NVME_CTRL_MODEL_DW3;
+                10'd10:  identify_ctrl_word = `NVME_CTRL_MODEL_DW4;
+                10'd11:  identify_ctrl_word = `NVME_CTRL_MODEL_DW5;
+                10'd12:  identify_ctrl_word = `NVME_CTRL_MODEL_DW6;
+                10'd13:  identify_ctrl_word = `NVME_CTRL_MODEL_DW7;
+                10'd14:  identify_ctrl_word = `NVME_CTRL_MODEL_DW8;
+                10'd15:  identify_ctrl_word = `NVME_CTRL_MODEL_DW9;
+                10'd16:  identify_ctrl_word = `NVME_CTRL_FW_DW0;
+                10'd17:  identify_ctrl_word = `NVME_CTRL_FW_DW1;
                 10'd18:  identify_ctrl_word = `NVME_IEEE_OUI_DWORD;
                 10'd19:  identify_ctrl_word = {16'h0001, PROFILE_MDTS, 8'h00}; // MDTS, CNTLID=1
                 10'd64:  identify_ctrl_word = 32'h00000002; // OACS: Format NVM, AERL=0 = one pending AER.
-                10'd65:  identify_ctrl_word = 32'h00070100; // ELPE=7 entries, LPA bit0 set, one power state.
-                10'd66:  identify_ctrl_word = 32'h01570000; // WCTEMP=343K / 70C
-                10'd67:  identify_ctrl_word = 32'h00000166; // CCTEMP=358K / 85C
+                10'd65:  identify_ctrl_word = 32'h04070100; // ELPE=7 entries, LPA bit0 set, five power states.
+                10'd66:  identify_ctrl_word = {`NVME_WARNING_TEMP_K, 16'h0000};
+                10'd67:  identify_ctrl_word = {16'h0000, `NVME_CRITICAL_TEMP_K};
                 10'd70:  identify_ctrl_word = PROFILE_BYTES[31:0];   // TNVMCAP low
                 10'd71:  identify_ctrl_word = PROFILE_BYTES[63:32];
                 10'd72:  identify_ctrl_word = PROFILE_BYTES[95:64];
@@ -631,14 +659,12 @@ module pcileech_bar_impl_nvme_disk(
                 10'd129: identify_ctrl_word = 32'd1;        // one namespace
                 10'd130: identify_ctrl_word = 32'h0000000c; // Dataset Management and Write Zeroes.
                 10'd132: identify_ctrl_word = 32'h00000001; // volatile write cache present
-                10'd512: identify_ctrl_word = 32'h00000320; // PSD0: 8.00 W active state.
-                10'd513: identify_ctrl_word = 32'h00000000; // ENLAT.
-                10'd514: identify_ctrl_word = 32'h00000000; // EXLAT.
-                10'd515: identify_ctrl_word = 32'h00000000; // Best relative read/write throughput and latency.
-                10'd516: identify_ctrl_word = 32'h00000000; // No separate idle-power claim.
-                10'd517: identify_ctrl_word = 32'h00000000;
-                10'd518: identify_ctrl_word = 32'h00000000;
-                10'd519: identify_ctrl_word = 32'h00000000;
+                10'd512, 10'd513, 10'd514, 10'd515, 10'd516, 10'd517, 10'd518, 10'd519,
+                10'd520, 10'd521, 10'd522, 10'd523, 10'd524, 10'd525, 10'd526, 10'd527,
+                10'd528, 10'd529, 10'd530, 10'd531, 10'd532, 10'd533, 10'd534, 10'd535,
+                10'd536, 10'd537, 10'd538, 10'd539, 10'd540, 10'd541, 10'd542, 10'd543,
+                10'd544, 10'd545, 10'd546, 10'd547, 10'd548, 10'd549, 10'd550, 10'd551:
+                         identify_ctrl_word = power_state_word(idx[5:3], idx[2:0]);
                 default: identify_ctrl_word = 32'h00000000;
             endcase
         end
@@ -685,7 +711,9 @@ module pcileech_bar_impl_nvme_disk(
                 PAYLOAD_SMART_LOG: payload_word = smart_log_word(idx[7:0]);
                 PAYLOAD_ERROR_LOG: payload_word = error_log_word(idx[7:0]);
                 PAYLOAD_LOG_PAGES: payload_word = supported_log_word(idx[7:0]);
+`ifdef NVME_ENABLE_VENDOR_LOG
                 PAYLOAD_VENDOR_LOG: payload_word = vendor_log_word(idx[7:0]);
+`endif
                 PAYLOAD_FW_SLOT_LOG: payload_word = firmware_slot_log_word(idx[7:0]);
                 PAYLOAD_DISK:      payload_word = disk_rd_data;
                 default:           payload_word = 32'h00000000;
@@ -863,8 +891,8 @@ module pcileech_bar_impl_nvme_disk(
         begin
             temp_k = composite_temperature();
             case (idx)
-                8'd0:  smart_log_word = {8'd100, temp_k, critical_warning_byte(temp_k)};
-                8'd1:  smart_log_word = 32'h0000000a;            // spare threshold 10%, used 0%
+                8'd0:  smart_log_word = {`NVME_SMART_SPARE, temp_k, critical_warning_byte(temp_k)};
+                8'd1:  smart_log_word = {16'h0000, `NVME_SMART_PERCENT_USED, `NVME_SMART_SPARE_THRESH};
                 8'd8:  smart_log_word = stat_data_units_read[31:0];
                 8'd9:  smart_log_word = stat_data_units_read[63:32];
                 8'd10: smart_log_word = 32'h00000000;
@@ -881,11 +909,11 @@ module pcileech_bar_impl_nvme_disk(
                 8'd21: smart_log_word = stat_host_write_cmds[63:32];
                 8'd22: smart_log_word = 32'h00000000;
                 8'd23: smart_log_word = 32'h00000000;
-                8'd24: smart_log_word = stat_cmds_completed[31:0];
-                8'd25: smart_log_word = stat_cmds_completed[63:32];
+                8'd24: smart_log_word = 32'h00000000;
+                8'd25: smart_log_word = 32'h00000000;
                 8'd26: smart_log_word = 32'h00000000;
                 8'd27: smart_log_word = 32'h00000000;
-                8'd28: smart_log_word = power_cycle_count;       // volatile controller power-cycle counter
+                8'd28: smart_log_word = power_cycle_count;
                 8'd29: smart_log_word = 32'h00000000;
                 8'd30: smart_log_word = 32'h00000000;
                 8'd31: smart_log_word = 32'h00000000;
@@ -906,14 +934,14 @@ module pcileech_bar_impl_nvme_disk(
                 8'd46: smart_log_word = 32'h00000000;
                 8'd47: smart_log_word = 32'h00000000;
                 8'd48: smart_log_word = warning_temp_time;
-                8'd49: smart_log_word = 32'h00000000;
-                8'd50: smart_log_word = 32'h00000000;
-                8'd51: smart_log_word = 32'h00000000;
-                8'd52: smart_log_word = critical_temp_time;
+                8'd49: smart_log_word = critical_temp_time;
+                8'd50: smart_log_word = {temp_k, temp_k};
+                8'd51: smart_log_word = {16'h0000, temp_k};
+                8'd52: smart_log_word = 32'h00000000;
                 8'd53: smart_log_word = 32'h00000000;
                 8'd54: smart_log_word = 32'h00000000;
                 8'd55: smart_log_word = 32'h00000000;
-                8'd56: smart_log_word = {16'h0000, temp_k};
+                8'd56: smart_log_word = 32'h00000000;
                 default: smart_log_word = 32'h00000000;
             endcase
         end
@@ -953,7 +981,9 @@ module pcileech_bar_impl_nvme_disk(
         begin
             case (idx)
                 8'h00: supported_log_word = 32'h01010101;
+`ifdef NVME_ENABLE_VENDOR_LOG
                 LOG_PAGE_VENDOR_C0_DW: supported_log_word = 32'h00000001;
+`endif
                 default: supported_log_word = 32'h00000000;
             endcase
         end
@@ -964,13 +994,14 @@ module pcileech_bar_impl_nvme_disk(
         begin
             case (idx)
                 8'd0: firmware_slot_log_word = 32'h00000001; // AFI: active slot 1.
-                8'd2: firmware_slot_log_word = ascii4("5","B","2","Q");
-                8'd3: firmware_slot_log_word = ascii4("G","X","A","7");
+                8'd2: firmware_slot_log_word = `NVME_CTRL_FW_DW0;
+                8'd3: firmware_slot_log_word = `NVME_CTRL_FW_DW1;
                 default: firmware_slot_log_word = 32'h00000000;
             endcase
         end
     endfunction
 
+`ifdef NVME_ENABLE_VENDOR_LOG
     function automatic [31:0] vendor_log_word;
         input [7:0] idx;
         begin
@@ -1025,6 +1056,7 @@ module pcileech_bar_impl_nvme_disk(
             endcase
         end
     endfunction
+`endif
 
     function automatic [31:0] msix_table_word;
         input       vec;
@@ -1246,8 +1278,8 @@ module pcileech_bar_impl_nvme_disk(
             thermal_timer      <= 20'h00000;
             second_timer       <= 64'h0000000000000000;
             hour_timer         <= 64'h0000000000000000;
-            power_on_hours     <= 32'h00000000;
-            power_cycle_count  <= 32'd1;
+            power_on_hours     <= `NVME_SMART_INIT_POH;
+            power_cycle_count  <= `NVME_SMART_INIT_POWER_CYCLES;
             controller_seen_enable <= 1'b0;
             warning_temp_time  <= 32'h00000000;
             critical_temp_time <= 32'h00000000;
@@ -1267,7 +1299,7 @@ module pcileech_bar_impl_nvme_disk(
             stat_prp_list_fetches <= 64'h0000000000000000;
             stat_queue_resets  <= 64'h0000000000000000;
             stat_shutdowns     <= 64'h0000000000000000;
-            stat_unsafe_shutdowns <= 64'h0000000000000000;
+            stat_unsafe_shutdowns <= `NVME_SMART_INIT_UNSAFE_SHUTDOWNS;
             stat_backend_evictions <= 64'h0000000000000000;
             stat_timeout_errors <= 64'h0000000000000000;
             stat_cpl_errors    <= 64'h0000000000000000;
@@ -1814,10 +1846,12 @@ module pcileech_bar_impl_nvme_disk(
                                         xfer_payload <= PAYLOAD_FW_SLOT_LOG;
                                         prepare_prp_transfer(cmd_prp1, cmd_prp2, admin_log_dw_count(cmd_dw[10], cmd_dw[11]), ST_HOST_WRITE_REQ);
                                     end
+`ifdef NVME_ENABLE_VENDOR_LOG
                                     LOG_PAGE_VENDOR_C0: begin
                                         xfer_payload <= PAYLOAD_VENDOR_LOG;
                                         prepare_prp_transfer(cmd_prp1, cmd_prp2, admin_log_dw_count(cmd_dw[10], cmd_dw[11]), ST_HOST_WRITE_REQ);
                                     end
+`endif
                                     default: begin
                                         cqe_status <= NVME_SC_INVALID_LOG_PAGE;
                                         record_error(NVME_SC_INVALID_LOG_PAGE, 1'b0);

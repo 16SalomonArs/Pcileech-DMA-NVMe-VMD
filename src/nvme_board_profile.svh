@@ -14,6 +14,31 @@
 `define NVME_BAR0_ACTIVE_LIMIT    20'h04000
 `define NVME_IEEE_OUI_DWORD       32'h00253800
 `define NVME_DMA_TAG              8'hc0
+`define NVME_CTRL_SERIAL_DW0      ascii4("S","6","P","Y")
+`define NVME_CTRL_SERIAL_DW1      ascii4("N","J","0","T")
+`define NVME_CTRL_SERIAL_DW2      ascii4("1","2","3","4")
+`define NVME_CTRL_SERIAL_DW3      ascii4("5","6","X"," ")
+`define NVME_CTRL_SERIAL_DW4      ascii4(" "," "," "," ")
+`define NVME_CTRL_MODEL_DW0       ascii4("S","a","m","s")
+`define NVME_CTRL_MODEL_DW1       ascii4("u","n","g"," ")
+`define NVME_CTRL_MODEL_DW2       ascii4("S","S","D"," ")
+`define NVME_CTRL_MODEL_DW3       ascii4("9","8","0"," ")
+`define NVME_CTRL_MODEL_DW4       ascii4("P","R","O"," ")
+`define NVME_CTRL_MODEL_DW5       ascii4(" "," "," "," ")
+`define NVME_CTRL_MODEL_DW6       ascii4(" "," "," "," ")
+`define NVME_CTRL_MODEL_DW7       ascii4(" "," "," "," ")
+`define NVME_CTRL_MODEL_DW8       ascii4(" "," "," "," ")
+`define NVME_CTRL_MODEL_DW9       ascii4(" "," "," "," ")
+`define NVME_CTRL_FW_DW0          ascii4("5","B","2","Q")
+`define NVME_CTRL_FW_DW1          ascii4("G","X","A","7")
+`define NVME_SMART_INIT_POH       32'd41
+`define NVME_SMART_INIT_POWER_CYCLES 32'd17
+`define NVME_SMART_INIT_UNSAFE_SHUTDOWNS 64'd0
+`define NVME_SMART_SPARE          8'd100
+`define NVME_SMART_SPARE_THRESH   8'd10
+`define NVME_SMART_PERCENT_USED   8'd0
+`define NVME_WARNING_TEMP_K       16'd343
+`define NVME_CRITICAL_TEMP_K      16'd358
 
 `ifdef NVME_PROFILE_75T
     `define NVME_PROFILE_NAME        "CaptainDMA 75T"

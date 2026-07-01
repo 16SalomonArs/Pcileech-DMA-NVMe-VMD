@@ -8,7 +8,7 @@
 - Keeps PCIe identity, Identify Controller, and Identify Namespace fields aligned with the shipped Samsung-style profile.
 - Reports SMART / Health data with temperature, read/write counters, command counters, error counters, and unsafe shutdown count.
 - Uses FPGA XADC temperature input with a light workload-based offset.
-- Implements Error Log, Supported Log Pages, Firmware Slot Info, and vendor log page `C0h`.
+- Implements Error Log, Supported Log Pages, and Firmware Slot Info.
 - Implements Flush, Format, Write Zeroes, and DSM/TRIM for normal OS and tool testing.
 - Supports MSI and MSI-X interrupts, including table, PBA, function mask, and vector mask behavior.
 - Backing storage is volatile FPGA cache, not persistent NAND.

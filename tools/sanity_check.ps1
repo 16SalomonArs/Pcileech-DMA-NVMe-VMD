@@ -102,8 +102,57 @@ if ($profile -notmatch 'NVME_PCI_CLASS_CODE\s+24''h010802') {
 if ($profile -notmatch 'NVME_DMA_TAG\s+8''hc0') {
     Add-Failure 'NVMe internal DMA tag must stay reserved and shared with the PCIe TLP filter.'
 }
+foreach ($requiredProfileSymbol in @(
+    'NVME_CTRL_SERIAL_DW0',
+    'NVME_CTRL_MODEL_DW0',
+    'NVME_CTRL_FW_DW0',
+    'NVME_SMART_INIT_POH',
+    'NVME_SMART_INIT_POWER_CYCLES',
+    'NVME_WARNING_TEMP_K',
+    'NVME_CRITICAL_TEMP_K'
+)) {
+    if ($profile -notmatch $requiredProfileSymbol) {
+        Add-Failure "NVMe Samsung profile field is missing from nvme_board_profile.svh: $requiredProfileSymbol"
+    }
+}
 if ($nvme -notmatch 'DMA_TAG\s*=\s*`NVME_DMA_TAG') {
     Add-Failure 'NVMe DMA engine must use the shared NVME_DMA_TAG value.'
+}
+if ($nvme -notmatch 'identify_ctrl_word\s*=\s*`NVME_CTRL_MODEL_DW0') {
+    Add-Failure 'Identify Controller model string must come from the shared Samsung profile.'
+}
+if ($nvme -notmatch 'identify_ctrl_word\s*=\s*`NVME_CTRL_FW_DW0') {
+    Add-Failure 'Identify Controller firmware revision must come from the shared Samsung profile.'
+}
+if ($nvme -notmatch '10''d65:\s+identify_ctrl_word\s*=\s*32''h04070100') {
+    Add-Failure 'Identify Controller must advertise the maintained five-state power table.'
+}
+if ($nvme -notmatch 'power_state_word') {
+    Add-Failure 'Identify Controller power-state descriptors must be populated.'
+}
+if ($nvme -notmatch '8''d24:\s*smart_log_word\s*=\s*32''h00000000') {
+    Add-Failure 'SMART Controller Busy Time must not be populated with command counters.'
+}
+if ($nvme -notmatch '8''d49:\s*smart_log_word\s*=\s*critical_temp_time') {
+    Add-Failure 'SMART critical temperature time must be at dword 49.'
+}
+if ($nvme -notmatch '8''d50:\s*smart_log_word\s*=\s*\{temp_k,\s*temp_k\}') {
+    Add-Failure 'SMART temperature sensors must start at dword 50.'
+}
+if ($nvme -notmatch '8''d56:\s*smart_log_word\s*=\s*32''h00000000') {
+    Add-Failure 'SMART dword 56 must not be used for temperature sensor data.'
+}
+if ($nvme -notmatch 'power_on_hours\s*<=\s*`NVME_SMART_INIT_POH') {
+    Add-Failure 'SMART power-on-hours reset value must come from the shared profile.'
+}
+if ($nvme -notmatch 'power_cycle_count\s*<=\s*`NVME_SMART_INIT_POWER_CYCLES') {
+    Add-Failure 'SMART power-cycle reset value must come from the shared profile.'
+}
+if ($nvme -notmatch '(?s)`ifdef NVME_ENABLE_VENDOR_LOG\s+LOG_PAGE_VENDOR_C0_DW') {
+    Add-Failure 'Vendor log page C0 must not be advertised unless NVME_ENABLE_VENDOR_LOG is set.'
+}
+if ($nvme -notmatch '(?s)`ifdef NVME_ENABLE_VENDOR_LOG\s+LOG_PAGE_VENDOR_C0:\s+begin') {
+    Add-Failure 'Vendor log page C0 must not be served unless NVME_ENABLE_VENDOR_LOG is set.'
 }
 if ($pcieTlp -notmatch 'is_tlphdr_nvme_cpl') {
     Add-Failure 'PCIe TLP filter must drop NVMe-owned DMA completions before forwarding to the USB DMA stream.'
@@ -123,8 +172,14 @@ if ($fifo -notmatch 'rw\[207\]\s*<=\s*1''b1') {
 if ($readme -notmatch 'physical PCIe port or M\.2 adapter path') {
     Add-Failure 'README must state that VMD has to be enabled for the physical port used by the board.'
 }
+if ($readme -match 'vendor log page `C0h`') {
+    Add-Failure 'README must not say the default profile advertises the internal vendor log page.'
+}
 if ($buildDoc -notmatch 'Keep the endpoint class as `010802`') {
     Add-Failure 'Build notes must keep VMD placement guidance separate from endpoint class changes.'
+}
+if ($buildDoc -notmatch 'Internal vendor pages stay out of the advertised profile') {
+    Add-Failure 'Build notes must say internal vendor pages are not advertised by the normal profile.'
 }
 if ($buildDoc -notmatch 'ZDMA 100T\s*\|\s*Incomplete; pending timing and bitstream refresh fixes') {
     Add-Failure 'Build notes must mark ZDMA 100T as incomplete and pending fixes.'
