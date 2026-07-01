@@ -109,7 +109,8 @@ foreach ($requiredProfileSymbol in @(
     'NVME_SMART_INIT_POH',
     'NVME_SMART_INIT_POWER_CYCLES',
     'NVME_WARNING_TEMP_K',
-    'NVME_CRITICAL_TEMP_K'
+    'NVME_CRITICAL_TEMP_K',
+    'NVME_POWER_STATE_MAX'
 )) {
     if ($profile -notmatch $requiredProfileSymbol) {
         Add-Failure "NVMe Samsung profile field is missing from nvme_board_profile.svh: $requiredProfileSymbol"
@@ -124,11 +125,17 @@ if ($nvme -notmatch 'identify_ctrl_word\s*=\s*`NVME_CTRL_MODEL_DW0') {
 if ($nvme -notmatch 'identify_ctrl_word\s*=\s*`NVME_CTRL_FW_DW0') {
     Add-Failure 'Identify Controller firmware revision must come from the shared Samsung profile.'
 }
-if ($nvme -notmatch '10''d65:\s+identify_ctrl_word\s*=\s*32''h04070100') {
-    Add-Failure 'Identify Controller must advertise the maintained five-state power table.'
+if ($profile -notmatch 'NVME_POWER_STATE_MAX\s+5''d0') {
+    Add-Failure '75T-safe profile must not advertise extra power states without a matching low-timing-cost implementation.'
 }
-if ($nvme -notmatch 'power_state_word') {
-    Add-Failure 'Identify Controller power-state descriptors must be populated.'
+if ($nvme -notmatch '10''d65:\s+identify_ctrl_word\s*=\s*32''h00070100') {
+    Add-Failure 'Identify Controller must advertise one power state unless the feature handler and timing are revalidated.'
+}
+if ($nvme -match '8''h02:\s+begin\s+if\s*\(\s*cmd_dw\[11\]\s*!=\s*32''h00000000') {
+    Add-Failure 'Power Management feature must accept every advertised power state, not only PS0.'
+}
+if ($nvme -notmatch 'cmd_dw\[11\]\[4:0\]\s*>\s*`NVME_POWER_STATE_MAX') {
+    Add-Failure 'Power Management Set Features must validate against the advertised power-state limit.'
 }
 if ($nvme -notmatch '8''d24:\s*smart_log_word\s*=\s*32''h00000000') {
     Add-Failure 'SMART Controller Busy Time must not be populated with command counters.'

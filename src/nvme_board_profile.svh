@@ -39,6 +39,7 @@
 `define NVME_SMART_PERCENT_USED   8'd0
 `define NVME_WARNING_TEMP_K       16'd343
 `define NVME_CRITICAL_TEMP_K      16'd358
+`define NVME_POWER_STATE_MAX      5'd0
 
 `ifdef NVME_PROFILE_75T
     `define NVME_PROFILE_NAME        "CaptainDMA 75T"
