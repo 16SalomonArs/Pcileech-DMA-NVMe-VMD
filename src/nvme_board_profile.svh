@@ -13,6 +13,7 @@
 `define NVME_BAR0_ACTIVE_BYTES    32'h00004000
 `define NVME_BAR0_ACTIVE_LIMIT    20'h04000
 `define NVME_IEEE_OUI_DWORD       32'h00253800
+`define NVME_DMA_TAG              8'hc0
 
 `ifdef NVME_PROFILE_75T
     `define NVME_PROFILE_NAME        "CaptainDMA 75T"

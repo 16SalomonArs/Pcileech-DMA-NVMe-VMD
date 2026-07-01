@@ -21,7 +21,7 @@ Board status:
 | --- | --- |
 | CaptainDMA 75T | Build verified with Vivado 2023.2 |
 | CaptainDMA 100T | Build verified with Vivado 2023.2 |
-| ZDMA 100T | Project generation kept; timing and bitstream refresh pending |
+| ZDMA 100T | Incomplete; pending timing and bitstream refresh fixes |
 
 The default PCIe profile is Samsung 980 PRO style: `144D:A80A`, subsystem `144D:A801`, class code `010802`, revision `02`. For device ID and BAR changes, use the notes below.
 

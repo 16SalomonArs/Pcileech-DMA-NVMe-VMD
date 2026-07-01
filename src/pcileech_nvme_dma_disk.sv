@@ -60,7 +60,7 @@ module pcileech_bar_impl_nvme_disk(
     localparam [7:0]   DMA_DWORDS_PER_TLP = 8'd1;
     localparam [7:0]   IO_QUEUE_LIMIT = 8'd1;
     localparam [7:0]   AER_PENDING_LIMIT = 8'd1;
-    localparam [7:0]   DMA_TAG        = 8'hc0;
+    localparam [7:0]   DMA_TAG        = `NVME_DMA_TAG;
     localparam [13:0]  MSIX_TABLE_OFF = `NVME_MSIX_TABLE_OFFSET;
     localparam [13:0]  MSIX_PBA_OFF   = `NVME_MSIX_PBA_OFFSET;
     localparam [15:0]  NVME_RDY_DELAY_CLKS = 16'd4096;

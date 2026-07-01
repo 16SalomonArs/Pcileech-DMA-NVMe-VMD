@@ -9,6 +9,7 @@
 
 `timescale 1ns / 1ps
 `include "pcileech_header.svh"
+`include "nvme_board_profile.svh"
 
 module pcileech_pcie_tlp_a7(
     input                   rst,
@@ -191,11 +192,15 @@ module pcileech_tlps128_filter(
                         (tlps_in.tdata[31:25] == 7'b0000101) ||      // Cpl:  Fmt[2:0]=000b (3 DW header, no data), Cpl=0101xb
                         (tlps_in.tdata[31:25] == 7'b0100101)         // CplD: Fmt[2:0]=010b (3 DW header, data),    CplD=0101xb
                       );
+    wire is_tlphdr_nvme_cpl = is_tlphdr_cpl && (tlps_in.tdata[79:72] == `NVME_DMA_TAG);
     wire is_tlphdr_cfg = first && (
                         (tlps_in.tdata[31:25] == 7'b0000010) ||      // CfgRd: Fmt[2:0]=000b (3 DW header, no data), CfgRd0/CfgRd1=0010xb
                         (tlps_in.tdata[31:25] == 7'b0100010)         // CfgWr: Fmt[2:0]=010b (3 DW header, data),    CfgWr0/CfgWr1=0010xb
                       );
-    wire filter_next = (filter && !first) || (cfgtlp_filter && first && is_tlphdr_cfg) || (alltlp_filter && first && !is_tlphdr_cpl && !is_tlphdr_cfg);
+    wire filter_next = (filter && !first) ||
+                       (first && is_tlphdr_nvme_cpl) ||
+                       (cfgtlp_filter && first && is_tlphdr_cfg) ||
+                       (alltlp_filter && first && !is_tlphdr_cpl && !is_tlphdr_cfg);
                       
     always @ ( posedge clk_pcie ) begin
         tdata   <= tlps_in.tdata;

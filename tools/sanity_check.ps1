@@ -52,6 +52,8 @@ $profile = Read-RepoText 'src/nvme_board_profile.svh'
 $bar = Read-RepoText 'src/pcileech_tlps128_bar_controller.sv'
 $ft601 = Read-RepoText 'src/pcileech_ft601.sv'
 $pcieCfg = Read-RepoText 'src/pcileech_pcie_cfg_a7.sv'
+$pcieTlp = Read-RepoText 'src/pcileech_pcie_tlp_a7.sv'
+$fifo = Read-RepoText 'src/pcileech_fifo.sv'
 $tcl = Read-RepoText 'vivado_ip_import.tcl'
 $tcl75 = Read-RepoText 'vivado_generate_project_captain_75T.tcl'
 $tclZdma = Read-RepoText 'vivado_generate_project_zdma_100T.tcl'
@@ -97,11 +99,35 @@ if ($pcieCfg -match 'rw\[21\]\s*<=\s*1') {
 if ($profile -notmatch 'NVME_PCI_CLASS_CODE\s+24''h010802') {
     Add-Failure 'NVMe board profile must keep the host-visible PCIe class code at 010802.'
 }
+if ($profile -notmatch 'NVME_DMA_TAG\s+8''hc0') {
+    Add-Failure 'NVMe internal DMA tag must stay reserved and shared with the PCIe TLP filter.'
+}
+if ($nvme -notmatch 'DMA_TAG\s*=\s*`NVME_DMA_TAG') {
+    Add-Failure 'NVMe DMA engine must use the shared NVME_DMA_TAG value.'
+}
+if ($pcieTlp -notmatch 'is_tlphdr_nvme_cpl') {
+    Add-Failure 'PCIe TLP filter must drop NVMe-owned DMA completions before forwarding to the USB DMA stream.'
+}
+if ($pcieTlp -notmatch 'tlps_in\.tdata\[79:72\]\s*==\s*`NVME_DMA_TAG') {
+    Add-Failure 'PCIe TLP filter must match NVMe completions by the shared DMA tag.'
+}
+if ($pcieTlp -notmatch 'alltlp_filter\s*&&\s*first\s*&&\s*!is_tlphdr_cpl\s*&&\s*!is_tlphdr_cfg') {
+    Add-Failure 'PCIe TLP filter must keep the user stream limited to completion traffic when all-TLP filtering is enabled.'
+}
+if ($fifo -notmatch 'PCIE_CORE_CFG_DEFAULT\s*=\s*8''b11110100') {
+    Add-Failure 'Default PCIe core config must enable all-TLP filtering so NVMe BAR/MMIO traffic does not pollute DMA tools.'
+}
+if ($fifo -notmatch 'rw\[207\]\s*<=\s*1''b1') {
+    Add-Failure 'Reset defaults must keep all-TLP filtering enabled for the DMA user stream.'
+}
 if ($readme -notmatch 'physical PCIe port or M\.2 adapter path') {
     Add-Failure 'README must state that VMD has to be enabled for the physical port used by the board.'
 }
 if ($buildDoc -notmatch 'Keep the endpoint class as `010802`') {
     Add-Failure 'Build notes must keep VMD placement guidance separate from endpoint class changes.'
+}
+if ($buildDoc -notmatch 'ZDMA 100T\s*\|\s*Incomplete; pending timing and bitstream refresh fixes') {
+    Add-Failure 'Build notes must mark ZDMA 100T as incomplete and pending fixes.'
 }
 if ($tcl -match 'GENERATE_SYNTH_CHECKPOINT\s+true\s+\$ips') {
     Add-Failure 'GENERATE_SYNTH_CHECKPOINT is being set on get_ips output instead of XCI file objects.'

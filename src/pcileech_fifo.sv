@@ -213,7 +213,7 @@ module pcileech_fifo #(
     wire    [319:0]     ro;
     reg     [239:0]     rw;
     
-    localparam [7:0]    PCIE_CORE_CFG_DEFAULT = 8'b01110100;
+    localparam [7:0]    PCIE_CORE_CFG_DEFAULT = 8'b11110100;
 
     // special non-user accessible registers 
     reg     [79:0]      _pcie_core_config = {
@@ -301,7 +301,7 @@ module pcileech_fifo #(
             rw[204]     <= 1'b1;                        //       CFGTLP FILTER TLP FROM USER
             rw[205]     <= 1'b1;                        //       PCIE BAR PIO ON-BOARD PROCESSING ENABLE
             rw[206]     <= 1'b1;                        //       CFGTLP PCIE WRITE ENABLE
-            rw[207]     <= 1'b0;                        //       TLP FILTER FROM USER: EXCEPT: Cpl,CplD and CfgRd/CfgWr (handled by rw[204])
+            rw[207]     <= 1'b1;                        //       TLP FILTER FROM USER: EXCEPT: Cpl,CplD and CfgRd/CfgWr (handled by rw[204])
             // PCIe DRP, PRSNT#, PERST#
             rw[208+:16] <= 0;                           // +01A: DRP: pcie_drp_di
             rw[224+:9]  <= 0;                           // +01C: DRP: pcie_drp_addr
