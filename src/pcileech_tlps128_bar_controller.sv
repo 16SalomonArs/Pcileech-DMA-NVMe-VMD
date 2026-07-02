@@ -49,7 +49,11 @@ module pcileech_tlps128_bar_controller(
     IfAXIS128.sink_lite     tlps_in,
     IfAXIS128.source        tlps_out,
     IfAXIS128.source        tlps_dma_out,
-    output                  nvme_irq_req
+    output                  nvme_irq_req,
+    output                  nvme_cpl_pending,
+    output [7:0]            nvme_cpl_tag,
+    output [11:0]           nvme_cpl_byte_count,
+    output [6:0]            nvme_cpl_lower_addr
 );
     
     // ------------------------------------------------------------------------
@@ -147,6 +151,10 @@ module pcileech_tlps128_bar_controller(
         .tlps_in        ( tlps_in                       ),
         .tlps_dma_out   ( tlps_dma_out                  ),
         .nvme_irq_req   ( nvme_irq_req                  ),
+        .nvme_cpl_pending ( nvme_cpl_pending            ),
+        .nvme_cpl_tag   ( nvme_cpl_tag                  ),
+        .nvme_cpl_byte_count ( nvme_cpl_byte_count      ),
+        .nvme_cpl_lower_addr ( nvme_cpl_lower_addr      ),
         .wr_addr        ( wr_addr                       ),
         .wr_be          ( wr_be                         ),
         .wr_data        ( wr_data                       ),

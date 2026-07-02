@@ -17,6 +17,10 @@ module pcileech_bar_impl_nvme_disk(
     IfAXIS128.sink_lite tlps_in,
     IfAXIS128.source    tlps_dma_out,
     output bit          nvme_irq_req,
+    output              nvme_cpl_pending,
+    output [7:0]        nvme_cpl_tag,
+    output [11:0]       nvme_cpl_byte_count,
+    output [6:0]        nvme_cpl_lower_addr,
     // incoming BAR writes:
     input [31:0]        wr_addr,
     input [3:0]         wr_be,
@@ -339,6 +343,10 @@ module pcileech_bar_impl_nvme_disk(
     assign tlps_dma_out.tvalid   = tx_valid;
     assign tlps_dma_out.tuser    = {7'h00, tx_last, 1'b1};
     assign tlps_dma_out.has_data = tx_valid;
+    assign nvme_cpl_pending      = cpl_expected;
+    assign nvme_cpl_tag          = cpl_expected_tag;
+    assign nvme_cpl_byte_count   = cpl_expected_byte_count;
+    assign nvme_cpl_lower_addr   = cpl_expected_lower_addr;
 
     wire        wr_bar0_active_range = (wr_addr[19:0] < `NVME_BAR0_ACTIVE_LIMIT);
     wire        rd_bar0_active_range = (rd_req_addr[19:0] < `NVME_BAR0_ACTIVE_LIMIT);

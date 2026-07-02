@@ -99,8 +99,8 @@ if ($pcieCfg -match 'rw\[21\]\s*<=\s*1') {
 if ($profile -notmatch 'NVME_PCI_CLASS_CODE\s+24''h010802') {
     Add-Failure 'NVMe board profile must keep the host-visible PCIe class code at 010802.'
 }
-if ($profile -notmatch 'NVME_DMA_TAG\s+8''hc0') {
-    Add-Failure 'NVMe internal DMA tag must stay reserved and shared with the PCIe TLP filter.'
+if ($profile -notmatch 'NVME_DMA_TAG\s+8''hfe') {
+    Add-Failure 'NVMe internal DMA tag must stay in the high reserved range for the PCIe TLP filter.'
 }
 foreach ($requiredProfileSymbol in @(
     'NVME_CTRL_SERIAL_DW0',
@@ -164,8 +164,17 @@ if ($nvme -notmatch '(?s)`ifdef NVME_ENABLE_VENDOR_LOG\s+LOG_PAGE_VENDOR_C0:\s+b
 if ($pcieTlp -notmatch 'is_tlphdr_nvme_cpl') {
     Add-Failure 'PCIe TLP filter must drop NVMe-owned DMA completions before forwarding to the USB DMA stream.'
 }
-if ($pcieTlp -notmatch 'tlps_in\.tdata\[79:72\]\s*==\s*`NVME_DMA_TAG') {
-    Add-Failure 'PCIe TLP filter must match NVMe completions by the shared DMA tag.'
+if ($pcieTlp -notmatch 'nvme_cpl_pending\s*&&\s*is_tlphdr_cpl') {
+    Add-Failure 'PCIe TLP filter must only drop NVMe-owned completions while an NVMe completion is pending.'
+}
+if ($pcieTlp -notmatch 'tlps_in\.tdata\[79:72\]\s*==\s*nvme_cpl_tag') {
+    Add-Failure 'PCIe TLP filter must match NVMe completions by the expected DMA tag.'
+}
+if ($pcieTlp -notmatch 'tlps_in\.tdata\[43:32\]\s*==\s*nvme_cpl_byte_count') {
+    Add-Failure 'PCIe TLP filter must match NVMe completions by the expected byte count.'
+}
+if ($pcieTlp -notmatch 'tlps_in\.tdata\[70:64\]\s*==\s*nvme_cpl_lower_addr') {
+    Add-Failure 'PCIe TLP filter must match NVMe completions by the expected lower address.'
 }
 if ($pcieTlp -notmatch 'alltlp_filter\s*&&\s*first\s*&&\s*!is_tlphdr_cpl\s*&&\s*!is_tlphdr_cfg') {
     Add-Failure 'PCIe TLP filter must keep the user stream limited to completion traffic when all-TLP filtering is enabled.'

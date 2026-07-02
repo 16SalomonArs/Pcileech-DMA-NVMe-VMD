@@ -33,6 +33,10 @@ module pcileech_pcie_tlp_a7(
     IfAXIS128 tlps_bar_rsp();
     IfAXIS128 tlps_cfg_rsp();
     IfAXIS128 tlps_nvme_dma();
+    wire      nvme_cpl_pending;
+    wire [7:0] nvme_cpl_tag;
+    wire [11:0] nvme_cpl_byte_count;
+    wire [6:0] nvme_cpl_lower_addr;
     
     // ------------------------------------------------------------------------
     // Convert received TLPs from PCIe core and transmit onwards:
@@ -49,7 +53,11 @@ module pcileech_pcie_tlp_a7(
         .tlps_in        ( tlps_rx                       ),
         .tlps_out       ( tlps_bar_rsp.source           ),
         .tlps_dma_out   ( tlps_nvme_dma.source          ),
-        .nvme_irq_req   ( nvme_irq_req                  )
+        .nvme_irq_req   ( nvme_irq_req                  ),
+        .nvme_cpl_pending ( nvme_cpl_pending            ),
+        .nvme_cpl_tag   ( nvme_cpl_tag                  ),
+        .nvme_cpl_byte_count ( nvme_cpl_byte_count      ),
+        .nvme_cpl_lower_addr ( nvme_cpl_lower_addr      )
     );
     
     pcileech_tlps128_cfgspace_shadow i_pcileech_tlps128_cfgspace_shadow(
@@ -67,6 +75,10 @@ module pcileech_pcie_tlp_a7(
         .clk_pcie       ( clk_pcie                      ),
         .alltlp_filter  ( dshadow2fifo.alltlp_filter    ),
         .cfgtlp_filter  ( dshadow2fifo.cfgtlp_filter    ),
+        .nvme_cpl_pending ( nvme_cpl_pending            ),
+        .nvme_cpl_tag   ( nvme_cpl_tag                  ),
+        .nvme_cpl_byte_count ( nvme_cpl_byte_count      ),
+        .nvme_cpl_lower_addr ( nvme_cpl_lower_addr      ),
         .tlps_in        ( tlps_rx                       ),
         .tlps_out       ( tlps_filtered.source_lite     )
     );
@@ -170,6 +182,10 @@ module pcileech_tlps128_filter(
     input                   clk_pcie,
     input                   alltlp_filter,
     input                   cfgtlp_filter,
+    input                   nvme_cpl_pending,
+    input [7:0]             nvme_cpl_tag,
+    input [11:0]            nvme_cpl_byte_count,
+    input [6:0]             nvme_cpl_lower_addr,
     IfAXIS128.sink_lite     tlps_in,
     IfAXIS128.source_lite   tlps_out
 );
@@ -192,7 +208,10 @@ module pcileech_tlps128_filter(
                         (tlps_in.tdata[31:25] == 7'b0000101) ||      // Cpl:  Fmt[2:0]=000b (3 DW header, no data), Cpl=0101xb
                         (tlps_in.tdata[31:25] == 7'b0100101)         // CplD: Fmt[2:0]=010b (3 DW header, data),    CplD=0101xb
                       );
-    wire is_tlphdr_nvme_cpl = is_tlphdr_cpl && (tlps_in.tdata[79:72] == `NVME_DMA_TAG);
+    wire is_tlphdr_nvme_cpl = nvme_cpl_pending && is_tlphdr_cpl &&
+                              (tlps_in.tdata[79:72] == nvme_cpl_tag) &&
+                              (tlps_in.tdata[43:32] == nvme_cpl_byte_count) &&
+                              (tlps_in.tdata[70:64] == nvme_cpl_lower_addr);
     wire is_tlphdr_cfg = first && (
                         (tlps_in.tdata[31:25] == 7'b0000010) ||      // CfgRd: Fmt[2:0]=000b (3 DW header, no data), CfgRd0/CfgRd1=0010xb
                         (tlps_in.tdata[31:25] == 7'b0100010)         // CfgWr: Fmt[2:0]=010b (3 DW header, data),    CfgWr0/CfgWr1=0010xb

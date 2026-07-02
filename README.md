@@ -2,6 +2,7 @@
 
 ## Implemented
 
+- Board status: CaptainDMA 75T and CaptainDMA 100T are the maintained targets. ZDMA 100T is still pending update and validation.
 - Handles the normal NVMe driver path: controller enable/disable, admin queue setup, I/O queue setup, doorbells, and reset cleanup.
 - Keeps written sectors in a volatile FPGA-side cache, so read-after-write works until the FPGA is reset or power-cycled.
 - Handles small I/O, larger transfers, 4K page crossings, PRP1/PRP2, and PRP list transfers.
