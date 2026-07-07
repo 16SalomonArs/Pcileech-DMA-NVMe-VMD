@@ -83,7 +83,7 @@ module pcileech_75t484_x1_top #(
     end
 
     assign rst = ~user_sw2_n || ((tickcount64 < 64) ? 1'b1 : 1'b0);
-    assign ft601_rst_n = ~rst;
+    assign ft601_rst_n = ~rst && (tickcount64 > 1000000);
     wire led_pwronblink = ~user_sw1_n ^ (tickcount64[24] & (tickcount64[63:27] == 0));
     
     OBUF led_ld1_obuf(.O(user_ld1_n), .I(~led_pcie));

@@ -54,6 +54,8 @@ $ft601 = Read-RepoText 'src/pcileech_ft601.sv'
 $pcieCfg = Read-RepoText 'src/pcileech_pcie_cfg_a7.sv'
 $pcieTlp = Read-RepoText 'src/pcileech_pcie_tlp_a7.sv'
 $fifo = Read-RepoText 'src/pcileech_fifo.sv'
+$top75 = Read-RepoText 'src/pcileech_75t484_x1_top.sv'
+$top100 = Read-RepoText 'src/pcileech_100t484_x1_top.sv'
 $tcl = Read-RepoText 'vivado_ip_import.tcl'
 $tcl75 = Read-RepoText 'vivado_generate_project_captain_75T.tcl'
 $tclZdma = Read-RepoText 'vivado_generate_project_zdma_100T.tcl'
@@ -74,6 +76,13 @@ if ($bar -notmatch 'default:\s*begin\s*state\s*<=\s*`S_ENGINE_IDLE;') {
 }
 if ($ft601 -notmatch 'default:\s*state\s*<=\s*`S_FT601_IDLE;') {
     Add-Failure 'FT601 state machine must have a safe default branch.'
+}
+if ($ft601 -notmatch 'din_req_data\s*=\s*!rst\s*&&\s*\(\(data_queue_count\s*==\s*2\)\s*\|\|\s*\(data_queue_count\s*==\s*3\)\)') {
+    Add-Failure 'FT601 must not request TX data while reset is asserted.'
+}
+if (($top75 -notmatch 'ft601_rst_n\s*=\s*~rst\s*&&\s*\(tickcount64\s*>\s*1000000\)') -or
+    ($top100 -notmatch 'ft601_rst_n\s*=\s*~rst\s*&&\s*\(tickcount64\s*>\s*1000000\)')) {
+    Add-Failure 'CaptainDMA FT601 reset must be held long enough for stable USB enumeration.'
 }
 if ($nvme -match 'ST_DSM_CLEAR') {
     Add-Failure 'DSM/TRIM must invalidate matching cache tags instead of using the old sequential clear state.'
@@ -99,8 +108,8 @@ if ($pcieCfg -match 'rw\[21\]\s*<=\s*1') {
 if ($profile -notmatch 'NVME_PCI_CLASS_CODE\s+24''h010802') {
     Add-Failure 'NVMe board profile must keep the host-visible PCIe class code at 010802.'
 }
-if ($profile -notmatch 'NVME_DMA_TAG\s+8''hfe') {
-    Add-Failure 'NVMe internal DMA tag must stay in the high reserved range for the PCIe TLP filter.'
+if ($profile -notmatch 'NVME_DMA_TAG\s+8''h75') {
+    Add-Failure 'NVMe internal DMA tag must stay outside the LeechCore async read tag ranges.'
 }
 foreach ($requiredProfileSymbol in @(
     'NVME_CTRL_SERIAL_DW0',
@@ -178,6 +187,9 @@ if ($pcieTlp -notmatch 'tlps_in\.tdata\[70:64\]\s*==\s*nvme_cpl_lower_addr') {
 }
 if ($pcieTlp -notmatch 'alltlp_filter\s*&&\s*first\s*&&\s*!is_tlphdr_cpl\s*&&\s*!is_tlphdr_cfg') {
     Add-Failure 'PCIe TLP filter must keep the user stream limited to completion traffic when all-TLP filtering is enabled.'
+}
+if ($pcieTlp -notmatch '(?s)\.tlps_in2\s*\(\s*tlps_bar_rsp\.sink\s*\).*?\.tlps_in3\s*\(\s*tlps_rx_fifo\.sink\s*\).*?\.tlps_in4\s*\(\s*tlps_nvme_dma\.sink\s*\)') {
+    Add-Failure 'User DMA TLPs must keep priority over NVMe internal DMA TLPs in the PCIe TX mux.'
 }
 if ($fifo -notmatch 'PCIE_CORE_CFG_DEFAULT\s*=\s*8''b11110100') {
     Add-Failure 'Default PCIe core config must enable all-TLP filtering so NVMe BAR/MMIO traffic does not pollute DMA tools.'

@@ -81,7 +81,7 @@ module pcileech_ft601(
 
     assign FT601_BE     = OE ? 4'b1111 : 4'bzzzz;
     assign FT601_DATA   = OE ? {FT601_DATA_OUT[0][7:0], FT601_DATA_OUT[0][15:8], FT601_DATA_OUT[0][23:16], FT601_DATA_OUT[0][31:24]} : 32'hzzzzzzzz;
-    assign din_req_data = !rst && (data_queue_count == 2) || (data_queue_count == 3);
+    assign din_req_data = !rst && ((data_queue_count == 2) || (data_queue_count == 3));
     assign FWD          = !rst && !FT601_TXE_N && (data_queue_count != 0) && (state == `S_FT601_TX_ACTIVE);
 
     always @ ( posedge clk ) begin

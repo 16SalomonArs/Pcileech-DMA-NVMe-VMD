@@ -112,8 +112,8 @@ module pcileech_pcie_tlp_a7(
         .tlps_out       ( tlps_tx                       ),
         .tlps_in1       ( tlps_cfg_rsp.sink             ),
         .tlps_in2       ( tlps_bar_rsp.sink             ),
-        .tlps_in3       ( tlps_nvme_dma.sink            ),
-        .tlps_in4       ( tlps_rx_fifo.sink             ),
+        .tlps_in3       ( tlps_rx_fifo.sink             ),
+        .tlps_in4       ( tlps_nvme_dma.sink            ),
         .tlps_in5       ( tlps_static                   )
     );
 
