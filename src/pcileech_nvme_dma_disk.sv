@@ -152,7 +152,7 @@ module pcileech_bar_impl_nvme_disk(
     bit [31:0] feat_temp_threshold;
     bit [31:0] feat_write_cache;
     bit [31:0] feat_irq_coalescing;
-    bit [31:0] feat_irq_vector_cfg;
+    bit [1:0]  feat_irq_coalescing_disable;
     bit [31:0] feat_async_event_cfg;
     bit [31:0] asq_lo;
     bit [31:0] asq_hi;
@@ -288,6 +288,7 @@ module pcileech_bar_impl_nvme_disk(
     bit        rd_req_valid_1;
 
     bit        tx_valid;
+    bit        tx_has_data;
     bit [127:0] tx_data;
     bit [3:0] tx_keepdw;
     bit        tx_last;
@@ -342,11 +343,13 @@ module pcileech_bar_impl_nvme_disk(
     assign tlps_dma_out.tlast    = tx_last;
     assign tlps_dma_out.tvalid   = tx_valid;
     assign tlps_dma_out.tuser    = {7'h00, tx_last, 1'b1};
-    assign tlps_dma_out.has_data = tx_valid;
+    // The PCIe TX mux uses has_data as look-ahead and requests a one-cycle tvalid pulse.
+    assign tlps_dma_out.has_data = tx_has_data && !(tx_valid && tx_last);
     assign nvme_cpl_pending      = cpl_expected;
     assign nvme_cpl_tag          = cpl_expected_tag;
     assign nvme_cpl_byte_count   = cpl_expected_byte_count;
     assign nvme_cpl_lower_addr   = cpl_expected_lower_addr;
+    wire   tx_idle               = !tx_has_data && !tx_valid && !tx_second_pending;
 
     wire        wr_bar0_active_range = (wr_addr[19:0] < `NVME_BAR0_ACTIVE_LIMIT);
     wire        rd_bar0_active_range = (rd_req_addr[19:0] < `NVME_BAR0_ACTIVE_LIMIT);
@@ -642,7 +645,7 @@ module pcileech_bar_impl_nvme_disk(
                 10'd128: identify_ctrl_word = 32'h00004466; // SQES=64B, CQES=16B
                 10'd129: identify_ctrl_word = 32'd1;        // one namespace
                 10'd130: identify_ctrl_word = 32'h0000000c; // Dataset Management and Write Zeroes.
-                10'd132: identify_ctrl_word = 32'h00000001; // volatile write cache present
+                10'd131: identify_ctrl_word = 32'h00000100; // VWC byte: volatile write cache present
                 10'd512: identify_ctrl_word = 32'h00000320; // PSD0: 8.00 W active state.
                 10'd513: identify_ctrl_word = 32'h00000000;
                 10'd514: identify_ctrl_word = 32'h00000000;
@@ -820,7 +823,7 @@ module pcileech_bar_impl_nvme_disk(
             err_opcode_ring[ring_slot] <= cmd_opcode;
             err_param_ring[ring_slot] <= error_param_location(status);
             if (aer_pending) begin
-                if (media_error && feat_async_event_cfg[1]) begin
+                if (media_error && feat_async_event_cfg[2]) begin
                     aer_event_pending <= 1'b1;
                     aer_result <= AER_RESULT_SMART_MEDIA;
                 end
@@ -1113,14 +1116,14 @@ module pcileech_bar_impl_nvme_disk(
             cpl_expected_byte_count <= 12'd4;
             cpl_expected_lower_addr <= addr[6:0];
             tx_second_pending <= 1'b0;
-            tx_valid          <= 1'b1;
+            tx_has_data       <= 1'b1;
             tx_last           <= 1'b1;
             if (addr[63:32] == 32'h00000000) begin
                 tx_keepdw <= 4'b0111;
                 tx_data   <= {
                     32'h00000000,
                     {addr[31:2], 2'b00},
-                    {bs16(pcie_id), tag, 4'hf, 4'hf},
+                    {bs16(pcie_id), tag, 4'h0, 4'hf},
                     {22'b0000000000000000000000, 10'd1}
                 };
             end
@@ -1129,7 +1132,7 @@ module pcileech_bar_impl_nvme_disk(
                 tx_data   <= {
                     {addr[31:2], 2'b00},
                     addr[63:32],
-                    {bs16(pcie_id), tag, 4'hf, 4'hf},
+                    {bs16(pcie_id), tag, 4'h0, 4'hf},
                     {22'b0010000000000000000000, 10'd1}
                 };
             end
@@ -1141,7 +1144,7 @@ module pcileech_bar_impl_nvme_disk(
         input [31:0] data;
         begin
             stat_dma_mwr_tlps <= stat_dma_mwr_tlps + 64'd1;
-            tx_valid <= 1'b1;
+            tx_has_data <= 1'b1;
             if (addr[63:32] == 32'h00000000) begin
                 tx_keepdw         <= 4'b1111;
                 tx_last           <= 1'b1;
@@ -1149,7 +1152,7 @@ module pcileech_bar_impl_nvme_disk(
                 tx_data           <= {
                     le_to_tlp(data),
                     {addr[31:2], 2'b00},
-                    {bs16(pcie_id), 8'h00, 4'hf, 4'hf},
+                    {bs16(pcie_id), 8'h00, 4'h0, 4'hf},
                     {22'b0100000000000000000000, 10'd1}
                 };
             end
@@ -1160,7 +1163,7 @@ module pcileech_bar_impl_nvme_disk(
                 tx_data           <= {
                     {addr[31:2], 2'b00},
                     addr[63:32],
-                    {bs16(pcie_id), 8'h00, 4'hf, 4'hf},
+                    {bs16(pcie_id), 8'h00, 4'h0, 4'hf},
                     {22'b0110000000000000000000, 10'd1}
                 };
                 tx_second_keepdw  <= 4'b0001;
@@ -1179,10 +1182,11 @@ module pcileech_bar_impl_nvme_disk(
         else begin
             cpl_valid <= 1'b0;
             cpl_error <= 1'b0;
-            if (tlps_in.tvalid && tlps_in.tuser[0] && (tlps_in.tdata[31:25] == 7'b0100101) &&
-                (tlps_in.tdata[79:72] == DMA_TAG) && tlps_in.tkeepdw[3]) begin
-                if (cpl_expected &&
-                    (tlps_in.tdata[79:72] == cpl_expected_tag) &&
+            if (cpl_expected && tlps_in.tvalid && tlps_in.tuser[0] &&
+                ((tlps_in.tdata[31:25] == 7'b0000101) ||
+                 (tlps_in.tdata[31:25] == 7'b0100101)) &&
+                (tlps_in.tdata[79:72] == cpl_expected_tag)) begin
+                if ((tlps_in.tdata[31:25] == 7'b0100101) && tlps_in.tkeepdw[3] &&
                     (tlps_in.tdata[47:45] == 3'b000) &&
                     (tlps_in.tdata[43:32] == cpl_expected_byte_count) &&
                     (tlps_in.tdata[70:64] == cpl_expected_lower_addr)) begin
@@ -1207,7 +1211,7 @@ module pcileech_bar_impl_nvme_disk(
             feat_temp_threshold<= 32'h00000157;
             feat_write_cache   <= 32'h00000001;
             feat_irq_coalescing<= 32'h00000000;
-            feat_irq_vector_cfg<= 32'h00000000;
+            feat_irq_coalescing_disable <= 2'b00;
             feat_async_event_cfg <= 32'h00000000;
             asq_lo             <= 32'h00000000;
             asq_hi             <= 32'h00000000;
@@ -1329,6 +1333,7 @@ module pcileech_bar_impl_nvme_disk(
             rd_rsp_data        <= 32'h00000000;
             rd_rsp_valid       <= 1'b0;
             tx_valid           <= 1'b0;
+            tx_has_data        <= 1'b0;
             tx_keepdw          <= 4'h0;
             tx_last            <= 1'b0;
             tx_data            <= 128'h0;
@@ -1357,6 +1362,7 @@ module pcileech_bar_impl_nvme_disk(
         end
         else begin
             tx_done      <= 1'b0;
+            tx_valid     <= 1'b0;
             nvme_irq_req <= 1'b0;
             temp_sample <= composite_temperature();
 
@@ -1427,7 +1433,10 @@ module pcileech_bar_impl_nvme_disk(
                 hour_timer <= hour_timer + 64'd1;
             end
 
-            if (tx_valid && tlps_dma_out.tready) begin
+            if (tx_has_data && tlps_dma_out.tready && !tx_valid)
+                tx_valid <= 1'b1;
+
+            if (tx_valid) begin
                 if (tx_second_pending) begin
                     tx_data           <= tx_second_data;
                     tx_keepdw         <= tx_second_keepdw;
@@ -1435,8 +1444,8 @@ module pcileech_bar_impl_nvme_disk(
                     tx_second_pending <= 1'b0;
                 end
                 else begin
-                    tx_valid <= 1'b0;
-                    tx_done  <= 1'b1;
+                    tx_has_data <= 1'b0;
+                    tx_done     <= 1'b1;
                 end
             end
 
@@ -1515,6 +1524,7 @@ module pcileech_bar_impl_nvme_disk(
                             prp_list_active <= 1'b0;
                             cpl_expected <= 1'b0;
                             tx_valid <= 1'b0;
+                            tx_has_data <= 1'b0;
                             tx_second_pending <= 1'b0;
                             aer_pending <= 1'b0;
                             aer_event_pending <= 1'b0;
@@ -1643,7 +1653,7 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_FETCH_REQ: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         start_mrd1(fetch_base + ({48'h0, fetch_idx} << 2), DMA_TAG);
                         wait_timer <= 20'h00000;
                         state <= ST_FETCH_WAIT;
@@ -1729,7 +1739,6 @@ module pcileech_bar_impl_nvme_disk(
                                     record_error(NVME_SC_QID_CONFLICT, 1'b0);
                                 end
                                 else if ((!cmd_dw[11][0]) ||
-                                         (cmd_dw[11][2:1] != 2'b00) ||
                                          (cmd_dw[11][15:3] != 13'd0) ||
                                          (cmd_prp1[11:0] != 12'h000)) begin
                                     cqe_status <= NVME_SC_INVALID_FIELD;
@@ -1880,28 +1889,31 @@ module pcileech_bar_impl_nvme_disk(
                                     end
                                     8'h07: cqe_result          <= 32'h00000000;
                                     8'h08: begin
-                                        if (cmd_dw[11] != 32'h00000000) begin
+                                        if (cmd_dw[11][31:16] != 16'h0000) begin
                                             cqe_status <= NVME_SC_INVALID_FIELD;
                                             record_error(NVME_SC_INVALID_FIELD, 1'b0);
                                         end
+                                        else begin
+                                            feat_irq_coalescing <= {16'h0000, cmd_dw[11][15:0]};
+                                        end
                                     end
                                     8'h09: begin
-                                        if (((cmd_dw[11] & 32'hffff0000) != 32'h00000000) ||
+                                        if (((cmd_dw[11] & 32'hfffe0000) != 32'h00000000) ||
                                             (cmd_dw[11][15:0] > 16'd1)) begin
                                             cqe_status <= NVME_SC_INVALID_FIELD;
                                             record_error(NVME_SC_INVALID_FIELD, 1'b0);
                                         end
                                         else begin
-                                            feat_irq_vector_cfg <= cmd_dw[11];
+                                            feat_irq_coalescing_disable[cmd_dw[11][0]] <= cmd_dw[11][16];
                                         end
                                     end
                                     8'h0b: begin
-                                        if ((cmd_dw[11] & 32'hfffffffc) != 32'h00000000) begin
+                                        if ((cmd_dw[11] & 32'hffffff00) != 32'h00000000) begin
                                             cqe_status <= NVME_SC_INVALID_FIELD;
                                             record_error(NVME_SC_INVALID_FIELD, 1'b0);
                                         end
                                         else begin
-                                            feat_async_event_cfg <= cmd_dw[11] & 32'h00000003;
+                                            feat_async_event_cfg <= cmd_dw[11] & 32'h000000ff;
                                         end
                                     end
                                     default: begin
@@ -1937,7 +1949,19 @@ module pcileech_bar_impl_nvme_disk(
                                     8'h06: cqe_result <= feat_write_cache;
                                     8'h07: cqe_result <= 32'h00000000;
                                     8'h08: cqe_result <= feat_irq_coalescing;
-                                    8'h09: cqe_result <= feat_irq_vector_cfg;
+                                    8'h09: begin
+                                        if ((cmd_dw[11][31:16] != 16'h0000) ||
+                                            (cmd_dw[11][15:0] > 16'd1)) begin
+                                            cqe_result <= 32'h00000000;
+                                            cqe_status <= NVME_SC_INVALID_FIELD;
+                                            record_error(NVME_SC_INVALID_FIELD, 1'b0);
+                                        end
+                                        else begin
+                                            cqe_result <= {15'h0000,
+                                                           feat_irq_coalescing_disable[cmd_dw[11][0]],
+                                                           15'h0000, cmd_dw[11][0]};
+                                        end
+                                    end
                                     8'h0a: cqe_result <= 32'h00000000;
                                     8'h0b: cqe_result <= feat_async_event_cfg;
                                     default: begin
@@ -1984,7 +2008,7 @@ module pcileech_bar_impl_nvme_disk(
                                         aer_result <= AER_RESULT_SMART_TEMP;
                                         aer_event_pending <= 1'b1;
                                     end
-                                    else if (feat_async_event_cfg[1] &&
+                                    else if (feat_async_event_cfg[2] &&
                                              (stat_media_errors != 32'h00000000)) begin
                                         aer_result <= AER_RESULT_SMART_MEDIA;
                                         aer_event_pending <= 1'b1;
@@ -2188,7 +2212,7 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_PRP_LIST_REQ: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         start_mrd1(cmd_prp2 + ({{(63-PRP_LIST_BITS){1'b0}}, prp_fetch_idx, prp_fetch_dw} << 2), DMA_TAG);
                         wait_timer <= 20'h00000;
                         state <= ST_PRP_LIST_WAIT;
@@ -2241,7 +2265,7 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_HOST_WRITE_REQ: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         dma_addr_stage <= prp_addr(xfer_prp1, xfer_prp2, xfer_idx);
                         dma_data_stage <= payload_word(xfer_payload, xfer_idx);
                         state <= ST_HOST_WRITE_ADDR;
@@ -2249,7 +2273,7 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_HOST_WRITE_ADDR: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         start_mwr1(dma_addr_stage, dma_data_stage);
                         wait_timer <= 20'h00000;
                         state <= ST_HOST_WRITE_WAIT;
@@ -2282,14 +2306,14 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_HOST_READ_REQ: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         dma_addr_stage <= prp_addr(xfer_prp1, xfer_prp2, xfer_idx);
                         state <= ST_HOST_READ_ADDR;
                     end
                 end
 
                 ST_HOST_READ_ADDR: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         start_mrd1(dma_addr_stage, DMA_TAG);
                         wait_timer <= 20'h00000;
                         state <= ST_HOST_READ_WAIT;
@@ -2363,14 +2387,14 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_DSM_FETCH_REQ: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         dma_addr_stage <= prp_addr(xfer_prp1, xfer_prp2, {10'h000, dsm_range_idx, dsm_dw_idx});
                         state <= ST_DSM_FETCH_ADDR;
                     end
                 end
 
                 ST_DSM_FETCH_ADDR: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         start_mrd1(dma_addr_stage, DMA_TAG);
                         wait_timer <= 20'h00000;
                         state <= ST_DSM_FETCH_WAIT;
@@ -2493,7 +2517,7 @@ module pcileech_bar_impl_nvme_disk(
                             state <= ST_CQE_REQ;
                         end
                     end
-                    else if (!tx_valid) begin
+                    else if (tx_idle) begin
                         cq_full_timer <= 20'h00000;
                         start_mwr1(
                             (cqe_qid ? io_cq_base : {acq_hi, acq_lo}) +
@@ -2566,7 +2590,7 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_IRQ_REQ: begin
-                    if (!tx_valid) begin
+                    if (tx_idle) begin
                         start_mwr1(msix_addr[irq_vector], msix_data[irq_vector]);
                         wait_timer <= 20'h00000;
                         state <= ST_IRQ_WAIT;

@@ -12,7 +12,7 @@
 `define NVME_BAR0_SIZE_BYTES      32'h00100000
 `define NVME_BAR0_ACTIVE_BYTES    32'h00004000
 `define NVME_BAR0_ACTIVE_LIMIT    20'h04000
-`define NVME_IEEE_OUI_DWORD       32'h00253800
+`define NVME_IEEE_OUI_DWORD       32'h38250000
 `define NVME_DMA_TAG              8'h75
 `define NVME_CTRL_SERIAL_DW0      ascii4("S","6","P","Y")
 `define NVME_CTRL_SERIAL_DW1      ascii4("N","J","0","T")

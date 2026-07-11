@@ -111,6 +111,9 @@ if ($profile -notmatch 'NVME_PCI_CLASS_CODE\s+24''h010802') {
 if ($profile -notmatch 'NVME_DMA_TAG\s+8''h75') {
     Add-Failure 'NVMe internal DMA tag must stay outside the LeechCore async read tag ranges.'
 }
+if ($profile -notmatch 'NVME_IEEE_OUI_DWORD\s+32''h38250000') {
+    Add-Failure 'Identify Controller must encode the Samsung IEEE OUI in byte order 00:25:38.'
+}
 foreach ($requiredProfileSymbol in @(
     'NVME_CTRL_SERIAL_DW0',
     'NVME_CTRL_MODEL_DW0',
@@ -127,6 +130,54 @@ foreach ($requiredProfileSymbol in @(
 }
 if ($nvme -notmatch 'DMA_TAG\s*=\s*`NVME_DMA_TAG') {
     Add-Failure 'NVMe DMA engine must use the shared NVME_DMA_TAG value.'
+}
+if ($nvme -match '\{bs16\(pcie_id\),\s*(?:tag|8''h00),\s*4''hf,\s*4''hf\}') {
+    Add-Failure 'A one-DWORD PCIe Memory Request has a nonzero LastDWBE and is malformed.'
+}
+if ([regex]::Matches($nvme, '\{bs16\(pcie_id\),\s*tag,\s*4''h0,\s*4''hf\}').Count -ne 2) {
+    Add-Failure 'Both 32-bit and 64-bit one-DWORD Memory Read headers must use LastDWBE=0 and FirstDWBE=F.'
+}
+if ([regex]::Matches($nvme, '\{bs16\(pcie_id\),\s*8''h00,\s*4''h0,\s*4''hf\}').Count -ne 2) {
+    Add-Failure 'Both 32-bit and 64-bit one-DWORD Memory Write headers must use LastDWBE=0 and FirstDWBE=F.'
+}
+if ($nvme -match 'tlps_dma_out\.has_data\s*=\s*tx_valid') {
+    Add-Failure 'NVMe DMA output must not use tvalid as the mux look-ahead has_data signal.'
+}
+if ($nvme -notmatch 'tlps_dma_out\.has_data\s*=\s*tx_has_data\s*&&\s*!\(tx_valid\s*&&\s*tx_last\)') {
+    Add-Failure 'NVMe DMA output must advertise queued data before selection and release the TX mux with the final beat.'
+}
+if ($nvme -notmatch '(?s)tx_valid\s*<=\s*1''b0;.*?if\s*\(tx_has_data\s*&&\s*tlps_dma_out\.tready\s*&&\s*!tx_valid\)\s*tx_valid\s*<=\s*1''b1;.*?if\s*\(tx_valid\).*?tx_has_data\s*<=\s*1''b0;.*?tx_done\s*<=\s*1''b1;') {
+    Add-Failure 'NVMe DMA output must follow the TX mux look-ahead/one-cycle-valid source protocol.'
+}
+if ($nvme -notmatch 'tx_idle\s*=\s*!tx_has_data\s*&&\s*!tx_valid\s*&&\s*!tx_second_pending') {
+    Add-Failure 'NVMe DMA request states must not overwrite a queued or active TX beat.'
+}
+if ($nvme -notmatch '(?s)cpl_expected\s*&&.*?7''b0000101.*?7''b0100101.*?cpl_expected_tag') {
+    Add-Failure 'NVMe DMA completion handling must fail fast on Cpl errors as well as accept successful CplD packets.'
+}
+if ($nvme -match 'cmd_dw\[11\]\[2:1\]\s*!=\s*2''b00') {
+    Add-Failure 'Create I/O Submission Queue must accept every valid Queue Priority value.'
+}
+if ($nvme -notmatch 'feat_irq_coalescing\s*<=\s*\{16''h0000,\s*cmd_dw\[11\]\[15:0\]\}') {
+    Add-Failure 'Set Features Interrupt Coalescing must accept and retain the THR and TIME fields.'
+}
+if ($nvme -notmatch 'cmd_dw\[11\]\s*&\s*32''hfffe0000') {
+    Add-Failure 'Interrupt Vector Configuration must allow the Coalescing Disable bit.'
+}
+if ($nvme -notmatch 'feat_irq_coalescing_disable\[cmd_dw\[11\]\[0\]\]\s*<=\s*cmd_dw\[11\]\[16\]') {
+    Add-Failure 'Interrupt Vector Configuration must retain Coalescing Disable per vector.'
+}
+if ($nvme -notmatch 'feat_async_event_cfg\s*<=\s*cmd_dw\[11\]\s*&\s*32''h000000ff') {
+    Add-Failure 'Async Event Configuration must accept every SMART/Health critical-warning mask bit.'
+}
+if ($nvme -notmatch 'media_error\s*&&\s*feat_async_event_cfg\[2\]') {
+    Add-Failure 'Media reliability events must use the matching Async Event Configuration warning bit.'
+}
+if ($nvme -notmatch '10''d131:\s+identify_ctrl_word\s*=\s*32''h00000100') {
+    Add-Failure 'Identify Controller must advertise Volatile Write Cache in byte 525.'
+}
+if ($nvme -match '10''d132:\s+identify_ctrl_word\s*=\s*32''h00000001') {
+    Add-Failure 'Identify Controller must not place Volatile Write Cache in the AWUPF field.'
 }
 if ($nvme -notmatch 'identify_ctrl_word\s*=\s*`NVME_CTRL_MODEL_DW0') {
     Add-Failure 'Identify Controller model string must come from the shared Samsung profile.'
@@ -199,6 +250,9 @@ if ($fifo -notmatch 'rw\[207\]\s*<=\s*1''b1') {
 }
 if ($readme -notmatch 'physical PCIe port or M\.2 adapter path') {
     Add-Failure 'README must state that VMD has to be enabled for the physical port used by the board.'
+}
+if ($readme -notmatch 'INACCESSIBLE_BOOT_DEVICE') {
+    Add-Failure 'README must keep boot-drive VMD mapping recovery guidance.'
 }
 if ($readme -match 'vendor log page `C0h`') {
     Add-Failure 'README must not say the default profile advertises the internal vendor log page.'
