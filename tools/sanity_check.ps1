@@ -102,6 +102,12 @@ if ($nvme -notmatch 'ST_DSM_INVALIDATE') {
 if ($nvme -notmatch 'ST_DSM_VALIDATE_2') {
     Add-Failure 'DSM range validation must be pipelined before error logging and cache invalidation.'
 }
+if ($nvme -match 'clear_total_dw\s*<=\s*cmd_io_dw') {
+    Add-Failure 'Write Zeroes length must not be truncated to the backing-cache index width.'
+}
+if ($nvme -notmatch '(?s)ST_ZERO_CLEAR:\s*begin.*?block_tag\[clear_idx\[BACKING_SLOT_BITS-1:0\]\]\s*>=\s*cmd_slba.*?block_valid\[clear_idx\[BACKING_SLOT_BITS-1:0\]\]\s*<=\s*1''b0') {
+    Add-Failure 'Write Zeroes must invalidate every cached LBA in the requested range.'
+}
 if ($nvme -match "lba_range_ok\(32''d1") {
     Add-Failure 'DSM range validation must not call lba_range_ok directly on the completion timing path.'
 }

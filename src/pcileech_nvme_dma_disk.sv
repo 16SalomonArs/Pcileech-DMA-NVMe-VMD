@@ -205,6 +205,7 @@ module pcileech_bar_impl_nvme_disk(
     bit [1:0]  cqe_idx;
     bit [BACKING_INDEX_BITS:0] clear_idx;
     bit [BACKING_INDEX_BITS:0] clear_total_dw;
+    bit [63:0] zero_lba_limit;
     bit [63:0] msix_addr [0:1];
     bit [31:0] msix_data [0:1];
     bit [31:0] msix_vector_ctrl [0:1];
@@ -725,13 +726,6 @@ module pcileech_bar_impl_nvme_disk(
         end
     endfunction
 
-    function automatic [63:0] backing_lba_offset;
-        input [BACKING_INDEX_BITS:0] idx;
-        begin
-            backing_lba_offset = {{(70-BACKING_INDEX_BITS){1'b0}}, idx[BACKING_INDEX_BITS:7]};
-        end
-    endfunction
-
     wire [63:0] backing_read_lba = cmd_slba + xfer_lba_offset(xfer_idx);
     wire [6:0]  backing_read_word_off = xfer_idx[6:0];
     wire [BACKING_SLOT_BITS-1:0] backing_read_slot = backing_slot(backing_read_lba);
@@ -742,19 +736,12 @@ module pcileech_bar_impl_nvme_disk(
     wire [BACKING_SLOT_BITS-1:0] backing_store_slot = backing_slot(backing_store_lba);
     wire [BACKING_INDEX_BITS-1:0] backing_store_index = backing_index(backing_store_lba, backing_store_word_off);
 
-    wire [63:0] backing_zero_lba = cmd_slba + backing_lba_offset(clear_idx);
-    wire [6:0]  backing_zero_word_off = clear_idx[6:0];
-    wire [BACKING_SLOT_BITS-1:0] backing_zero_slot = backing_slot(backing_zero_lba);
-    wire [BACKING_INDEX_BITS-1:0] backing_zero_index = backing_index(backing_zero_lba, backing_zero_word_off);
-
     wire backing_store_fire  = (state == ST_HOST_READ_WAIT) && cpl_valid;
     wire backing_format_fire = (state == ST_FORMAT_CLEAR);
-    wire backing_zero_fire   = (state == ST_ZERO_CLEAR);
-    wire backing_wr_en       = backing_store_fire || backing_format_fire || backing_zero_fire;
-    wire [BACKING_INDEX_BITS-1:0] backing_wr_addr =
-        backing_store_fire ? backing_store_index :
-        backing_zero_fire  ? backing_zero_index :
-                             clear_idx[BACKING_INDEX_BITS-1:0];
+    wire backing_wr_en       = backing_store_fire || backing_format_fire;
+    wire [BACKING_INDEX_BITS-1:0] backing_wr_addr = backing_store_fire ?
+                                                            backing_store_index :
+                                                            clear_idx[BACKING_INDEX_BITS-1:0];
     wire [31:0] backing_wr_data = backing_store_fire ? cpl_data : 32'h00000000;
 
     always @ (posedge clk) begin
@@ -1256,6 +1243,7 @@ module pcileech_bar_impl_nvme_disk(
             cqe_idx            <= 2'h0;
             clear_idx          <= {BACKING_INDEX_BITS+1{1'b0}};
             clear_total_dw     <= {BACKING_INDEX_BITS+1{1'b0}};
+            zero_lba_limit     <= 64'h0000000000000000;
             msix_addr[0]       <= 64'h0000000000000000;
             msix_addr[1]       <= 64'h0000000000000000;
             msix_data[0]       <= 32'h00000000;
@@ -2160,7 +2148,7 @@ module pcileech_bar_impl_nvme_disk(
                                     if (thermal_load < 8'he0)
                                         thermal_load <= thermal_load + 8'd2;
                                     clear_idx      <= {BACKING_INDEX_BITS+1{1'b0}};
-                                    clear_total_dw <= cmd_io_dw[BACKING_INDEX_BITS:0];
+                                    zero_lba_limit <= cmd_slba + {48'h000000000000, cmd_nlb} + 64'd1;
                                     state          <= ST_ZERO_CLEAR;
                                 end
                                 else begin
@@ -2371,14 +2359,13 @@ module pcileech_bar_impl_nvme_disk(
                 end
 
                 ST_ZERO_CLEAR: begin
-                    if ((backing_zero_word_off == 7'h00) &&
-                        block_valid[backing_zero_slot] &&
-                        (block_tag[backing_zero_slot] != backing_zero_lba)) begin
-                        stat_backend_evictions <= stat_backend_evictions + 64'd1;
+                    if (block_valid[clear_idx[BACKING_SLOT_BITS-1:0]] &&
+                        (block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] >= cmd_slba) &&
+                        (block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] < zero_lba_limit)) begin
+                        block_valid[clear_idx[BACKING_SLOT_BITS-1:0]] <= 1'b0;
+                        block_tag[clear_idx[BACKING_SLOT_BITS-1:0]] <= 64'h0000000000000000;
                     end
-                    block_valid[backing_zero_slot] <= 1'b1;
-                    block_tag[backing_zero_slot] <= backing_zero_lba;
-                    if ((clear_idx + BACKING_ONE) >= clear_total_dw) begin
+                    if ((clear_idx + BACKING_ONE) >= BACKING_SLOT_COUNT) begin
                         state <= ST_CQE_REQ;
                     end
                     else begin
