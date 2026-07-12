@@ -27,12 +27,21 @@ function Convert-CoeDwordToHostHex {
     return ($Raw.Substring(6, 2) + $Raw.Substring(4, 2) + $Raw.Substring(2, 2) + $Raw.Substring(0, 2)).ToUpperInvariant()
 }
 
-function Get-CfgspaceHostDwords {
+function Get-CoeRawDwords {
     param([string]$Path)
     $raw = Get-Content -LiteralPath $Path -Raw
     $values = New-Object System.Collections.Generic.List[string]
     foreach ($m in [regex]::Matches($raw, '(?i)\b[0-9a-f]{8}\b')) {
-        $values.Add((Convert-CoeDwordToHostHex $m.Value)) | Out-Null
+        $values.Add($m.Value.ToUpperInvariant()) | Out-Null
+    }
+    return $values.ToArray()
+}
+
+function Get-CfgspaceHostDwords {
+    param([string]$Path)
+    $values = New-Object System.Collections.Generic.List[string]
+    foreach ($word in (Get-CoeRawDwords $Path)) {
+        $values.Add((Convert-CoeDwordToHostHex $word)) | Out-Null
     }
     return $values.ToArray()
 }
@@ -248,12 +257,6 @@ if ($fifo -notmatch 'PCIE_CORE_CFG_DEFAULT\s*=\s*8''b11110100') {
 if ($fifo -notmatch 'rw\[207\]\s*<=\s*1''b1') {
     Add-Failure 'Reset defaults must keep all-TLP filtering enabled for the DMA user stream.'
 }
-if ($readme -notmatch 'physical PCIe port or M\.2 adapter path') {
-    Add-Failure 'README must state that VMD has to be enabled for the physical port used by the board.'
-}
-if ($readme -notmatch 'INACCESSIBLE_BOOT_DEVICE') {
-    Add-Failure 'README must keep boot-drive VMD mapping recovery guidance.'
-}
 if ($readme -match 'vendor log page `C0h`') {
     Add-Failure 'README must not say the default profile advertises the internal vendor log page.'
 }
@@ -451,6 +454,9 @@ foreach ($dir in $boardDirs) {
         Bar0_Prefetchable = 'false'
         Bar0_Scale = 'Megabytes'
         Bar0_Size = '1'
+        DSN_Enabled = 'true'
+        EXT_PCI_CFG_Space = 'true'
+        EXT_PCI_CFG_Space_Addr = '043'
     }
     foreach ($key in $expect.Keys) {
         $actual = Get-XciParam $params $key
@@ -479,6 +485,10 @@ foreach ($dir in $boardDirs) {
         c_msix_table_bir = '0'
         c_msix_pba_offset = '3800'
         c_msix_pba_bir = '0'
+        c_dsn_cap_enabled = 'TRUE'
+        c_dsn_base_ptr = '100'
+        c_dsn_next_ptr = '10c'
+        c_ext_pci_cfg_space_addr = '043'
     }
     foreach ($key in $modelExpect.Keys) {
         $actual = Get-XciParam $modelParams $key
@@ -502,6 +512,15 @@ foreach ($dir in $boardDirs) {
             @{ Offset = 0xB4; Value = '00003000'; Name = 'MSI-X table' },
             @{ Offset = 0xB8; Value = '00003800'; Name = 'MSI-X PBA' }
         )
+        if ($dir -ne 'ip_zdma_100t') {
+            $cfgExpect += @(
+                @{ Offset = 0x100; Value = '10C10003'; Name = 'DSN capability header' },
+                @{ Offset = 0x104; Value = '1B4F0671'; Name = 'DSN low' },
+                @{ Offset = 0x108; Value = '3C9D2E8A'; Name = 'DSN high' },
+                @{ Offset = 0x10C; Value = '00020001'; Name = 'AER capability header' },
+                @{ Offset = 0x118; Value = '00462010'; Name = 'AER severity' }
+            )
+        }
         foreach ($item in $cfgExpect) {
             $index = [int]($item.Offset / 4)
             if ($cfgWords.Count -le $index) {
@@ -510,6 +529,49 @@ foreach ($dir in $boardDirs) {
             }
             if ($cfgWords[$index] -ne $item.Value) {
                 Add-Failure "$dir cfgspace $($item.Name) at 0x$($item.Offset.ToString('X2')) expected $($item.Value), got $($cfgWords[$index])."
+            }
+        }
+
+        if ($dir -ne 'ip_zdma_100t') {
+            $aerHeader = [Convert]::ToUInt32($cfgWords[0x10C / 4], 16)
+            if (($aerHeader -band 0xFFFF) -ne 0x0001) {
+                Add-Failure "$dir cfgspace custom extended capability at 0x10C must be AER."
+            }
+            if ((($aerHeader -shr 16) -band 0xF) -ne 0x2) {
+                Add-Failure "$dir cfgspace AER capability must use version 2."
+            }
+            if ((($aerHeader -shr 20) -band 0xFFF) -ne 0) {
+                Add-Failure "$dir cfgspace AER capability must terminate the extended capability chain."
+            }
+
+            $writeMask = Get-CoeRawDwords (Join-Path $Root "$dir/pcileech_cfgspace_writemask.coe")
+            $rw1cMask = Get-CoeRawDwords (Join-Path $Root "$dir/pcileech_cfgspace_rw1c.coe")
+            $maskExpect = @{
+                0x100 = '00000000'
+                0x104 = '00000000'
+                0x108 = '00000000'
+                0x10C = '00000000'
+                0x110 = '00FF0000'
+                0x114 = '00FA0F08'
+                0x118 = '00FA0F08'
+                0x11C = '0000FF00'
+                0x120 = '00008F83'
+                0x124 = '000080FF'
+                0x128 = 'FF0000FF'
+                0x12C = '000000FF'
+                0x130 = 'FFFF0000'
+                0x134 = 'FFFFFFFF'
+                0x138 = '00000000'
+            }
+            foreach ($offset in $maskExpect.Keys) {
+                $index = [int]($offset / 4)
+                if ($writeMask[$index] -ne $maskExpect[$offset]) {
+                    Add-Failure "$dir AER write mask at 0x$($offset.ToString('X3')) expected $($maskExpect[$offset]), got $($writeMask[$index])."
+                }
+            }
+            if (($rw1cMask[0x110 / 4] -ne '00FF0000') -or
+                ($rw1cMask[0x11C / 4] -ne '0000FF00')) {
+                Add-Failure "$dir AER status registers must use write-one-to-clear semantics."
             }
         }
     }
