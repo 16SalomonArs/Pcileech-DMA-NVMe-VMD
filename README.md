@@ -15,7 +15,7 @@
 - Backing storage is volatile FPGA cache, not persistent NAND.
 
 ## Requirements
-
+- This Source is intended for controlled lab use, hardware learning, interoperability testing, and security research. It is not a PC for bypassing access controls, anti-cheat systems, or protected environments.
 - Intel CPU, 11th generation or newer, in the host where the DMA card is installed.
 - Intel VMD (Virtual RAID on CPU) enabled in BIOS for the physical PCIe port or M.2 adapter path used by the DMA card.
 - Matching Intel RST/VMD drivers installed on Windows.
