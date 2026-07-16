@@ -126,6 +126,7 @@ module pcileech_bar_impl_nvme_disk(
     localparam [3:0] PAYLOAD_VENDOR_LOG = 4'd8;
 `endif
     localparam [3:0] PAYLOAD_FW_SLOT_LOG = 4'd9;
+    localparam [3:0] PAYLOAD_IDENT_DESC  = 4'd10;
     localparam [7:0] LOG_PAGE_SUPPORTED = 8'h00;
     localparam [7:0] LOG_PAGE_ERROR     = 8'h01;
     localparam [7:0] LOG_PAGE_SMART     = 8'h02;
@@ -137,6 +138,11 @@ module pcileech_bar_impl_nvme_disk(
     localparam [31:0] AER_RESULT_ERROR_LOG   = 32'h00010000;
     localparam [31:0] AER_RESULT_SMART_TEMP  = 32'h00020101;
     localparam [31:0] AER_RESULT_SMART_MEDIA = 32'h00020201;
+    localparam [31:0] IDENT_NS_DESC_DW0      = 32'h00001003;
+    localparam [31:0] IDENT_NS_DESC_DW1      = 32'h78563412;
+    localparam [31:0] IDENT_NS_DESC_DW2      = 32'hbc4a3412;
+    localparam [31:0] IDENT_NS_DESC_DW3      = 32'h3412ef8d;
+    localparam [31:0] IDENT_NS_DESC_DW4      = 32'hbc9a7856;
 
     (* ram_style = "block" *) reg [31:0] block_store [0:BACKING_DWORDS-1];
     bit        block_valid [0:BACKING_LBAS-1];
@@ -698,6 +704,16 @@ module pcileech_bar_impl_nvme_disk(
                 PAYLOAD_IDENT_CTL: payload_word = identify_ctrl_word(idx[9:0]);
                 PAYLOAD_IDENT_NS:  payload_word = identify_ns_word(idx[9:0]);
                 PAYLOAD_IDENT_LST: payload_word = (idx == 20'd0) ? 32'd1 : 32'h00000000;
+                PAYLOAD_IDENT_DESC: begin
+                    case (idx[9:0])
+                        10'd0: payload_word = IDENT_NS_DESC_DW0;
+                        10'd1: payload_word = IDENT_NS_DESC_DW1;
+                        10'd2: payload_word = IDENT_NS_DESC_DW2;
+                        10'd3: payload_word = IDENT_NS_DESC_DW3;
+                        10'd4: payload_word = IDENT_NS_DESC_DW4;
+                        default: payload_word = 32'h00000000;
+                    endcase
+                end
                 PAYLOAD_SMART_LOG: payload_word = smart_log_word(idx[7:0]);
                 PAYLOAD_ERROR_LOG: payload_word = error_log_word(idx[7:0]);
                 PAYLOAD_LOG_PAGES: payload_word = supported_log_word(idx[7:0]);
@@ -1782,7 +1798,7 @@ module pcileech_bar_impl_nvme_disk(
                             end
                             8'h06: begin
                                 if (((cmd_dw[10][7:0] == 8'h00) && (cmd_nsid != 32'd1)) ||
-                                    (cmd_dw[10][7:0] > 8'h02)) begin
+                                    (cmd_dw[10][7:0] > 8'h03)) begin
                                     cqe_status <= NVME_SC_INVALID_FIELD;
                                     record_error(NVME_SC_INVALID_FIELD, 1'b0);
                                     state <= ST_CQE_REQ;
@@ -1796,6 +1812,7 @@ module pcileech_bar_impl_nvme_disk(
                                         8'h00: xfer_payload <= PAYLOAD_IDENT_NS;
                                         8'h01: xfer_payload <= PAYLOAD_IDENT_CTL;
                                         8'h02: xfer_payload <= PAYLOAD_IDENT_LST;
+                                        8'h03: xfer_payload <= PAYLOAD_IDENT_DESC;
                                     endcase
                                     prepare_prp_transfer(cmd_prp1, cmd_prp2, 20'd1024, ST_HOST_WRITE_REQ);
                                 end
