@@ -203,8 +203,8 @@ if ($nvme -notmatch 'identify_ctrl_word\s*=\s*`NVME_CTRL_FW_DW0') {
 if ($profile -notmatch 'NVME_POWER_STATE_MAX\s+5''d0') {
     Add-Failure '75T-safe profile must not advertise extra power states without a matching low-timing-cost implementation.'
 }
-if ($nvme -notmatch '10''d65:\s+identify_ctrl_word\s*=\s*32''h00070100') {
-    Add-Failure 'Identify Controller must advertise one power state unless the feature handler and timing are revalidated.'
+if ($nvme -notmatch '10''d65:\s+identify_ctrl_word\s*=\s*32''h00070300') {
+    Add-Failure 'Identify Controller must advertise one power state plus SMART and Command Effects log support.'
 }
 if ($nvme -match '8''h02:\s+begin\s+if\s*\(\s*cmd_dw\[11\]\s*!=\s*32''h00000000') {
     Add-Failure 'Power Management feature must accept every advertised power state, not only PS0.'
@@ -235,6 +235,18 @@ if ($nvme -notmatch '(?s)`ifdef NVME_ENABLE_VENDOR_LOG\s+LOG_PAGE_VENDOR_C0_DW')
 }
 if ($nvme -notmatch '(?s)`ifdef NVME_ENABLE_VENDOR_LOG\s+LOG_PAGE_VENDOR_C0:\s+begin') {
     Add-Failure 'Vendor log page C0 must not be served unless NVME_ENABLE_VENDOR_LOG is set.'
+}
+if ($nvme -notmatch 'LOG_PAGE_CMD_EFFECTS\s*=\s*8''h05') {
+    Add-Failure 'Command Effects log page must be defined at log page 05h.'
+}
+if ($nvme -notmatch 'PAYLOAD_CMD_EFFECTS:\s*payload_word\s*=\s*command_effects_word') {
+    Add-Failure 'Command Effects log page must have a payload generator.'
+}
+if ($nvme -notmatch 'LOG_PAGE_CMD_EFFECTS:\s+begin') {
+    Add-Failure 'Get Log Page must serve Command Effects log page 05h.'
+}
+if ($nvme -notmatch '8''h01:\s*supported_log_word\s*=\s*32''h00000100') {
+    Add-Failure 'Supported Log Pages must advertise Command Effects at log page 05h.'
 }
 if ($pcieTlp -notmatch 'is_tlphdr_nvme_cpl') {
     Add-Failure 'PCIe TLP filter must drop NVMe-owned DMA completions before forwarding to the USB DMA stream.'
@@ -514,6 +526,7 @@ foreach ($dir in $boardDirs) {
             @{ Offset = 0x08; Value = '01080202'; Name = 'revision/class' },
             @{ Offset = 0x10; Value = '00000000'; Name = 'BAR0 reset value' },
             @{ Offset = 0x34; Value = '00000040'; Name = 'capability pointer' },
+            @{ Offset = 0x48; Value = '00002107'; Name = 'PCIe Device Control default' },
             @{ Offset = 0xB0; Value = '00010011'; Name = 'MSI-X capability' },
             @{ Offset = 0xB4; Value = '00003000'; Name = 'MSI-X table' },
             @{ Offset = 0xB8; Value = '00003800'; Name = 'MSI-X PBA' }

@@ -127,10 +127,12 @@ module pcileech_bar_impl_nvme_disk(
 `endif
     localparam [3:0] PAYLOAD_FW_SLOT_LOG = 4'd9;
     localparam [3:0] PAYLOAD_IDENT_DESC  = 4'd10;
+    localparam [3:0] PAYLOAD_CMD_EFFECTS = 4'd11;
     localparam [7:0] LOG_PAGE_SUPPORTED = 8'h00;
     localparam [7:0] LOG_PAGE_ERROR     = 8'h01;
     localparam [7:0] LOG_PAGE_SMART     = 8'h02;
     localparam [7:0] LOG_PAGE_FW_SLOT   = 8'h03;
+    localparam [7:0] LOG_PAGE_CMD_EFFECTS = 8'h05;
 `ifdef NVME_ENABLE_VENDOR_LOG
     localparam [7:0] LOG_PAGE_VENDOR_C0 = 8'hc0;
     localparam [7:0] LOG_PAGE_VENDOR_C0_DW = 8'h30;
@@ -644,7 +646,7 @@ module pcileech_bar_impl_nvme_disk(
                 10'd19:  identify_ctrl_word = {16'h0001, PROFILE_MDTS, 8'h00}; // MDTS, CNTLID=1
                 10'd20:  identify_ctrl_word = NVME_VS;     // Identify Controller VER matches VS register.
                 10'd64:  identify_ctrl_word = 32'h00000002; // OACS: Format NVM, AERL=0 = one pending AER.
-                10'd65:  identify_ctrl_word = 32'h00070100; // ELPE=7 entries, LPA bit0 set, one power state.
+                10'd65:  identify_ctrl_word = 32'h00070300; // ELPE=7 entries, SMART-per-NS and Command Effects logs, one power state.
                 10'd66:  identify_ctrl_word = {`NVME_WARNING_TEMP_K, 16'h0000};
                 10'd67:  identify_ctrl_word = {16'h0000, `NVME_CRITICAL_TEMP_K};
                 10'd70:  identify_ctrl_word = PROFILE_BYTES[31:0];   // TNVMCAP low
@@ -742,6 +744,7 @@ module pcileech_bar_impl_nvme_disk(
 `endif
                 PAYLOAD_FW_SLOT_LOG: payload_word = firmware_slot_log_word(idx[7:0]);
                 PAYLOAD_DISK:      payload_word = disk_rd_data;
+                PAYLOAD_CMD_EFFECTS: payload_word = command_effects_word(idx[9:0]);
                 default:           payload_word = 32'h00000000;
             endcase
         end
@@ -993,10 +996,36 @@ module pcileech_bar_impl_nvme_disk(
         begin
             case (idx)
                 8'h00: supported_log_word = 32'h01010101;
+                8'h01: supported_log_word = 32'h00000100;
 `ifdef NVME_ENABLE_VENDOR_LOG
                 LOG_PAGE_VENDOR_C0_DW: supported_log_word = 32'h00000001;
 `endif
                 default: supported_log_word = 32'h00000000;
+            endcase
+        end
+    endfunction
+
+    function automatic [31:0] command_effects_word;
+        input [9:0] idx;
+        begin
+            case (idx)
+                10'h000: command_effects_word = 32'h00000001; // Delete I/O Submission Queue
+                10'h001: command_effects_word = 32'h00000001; // Create I/O Submission Queue
+                10'h002: command_effects_word = 32'h00000001; // Get Log Page
+                10'h004: command_effects_word = 32'h00000001; // Delete I/O Completion Queue
+                10'h005: command_effects_word = 32'h00000001; // Create I/O Completion Queue
+                10'h006: command_effects_word = 32'h00000001; // Identify
+                10'h008: command_effects_word = 32'h00000001; // Abort
+                10'h009: command_effects_word = 32'h00000001; // Set Features
+                10'h00a: command_effects_word = 32'h00000001; // Get Features
+                10'h00c: command_effects_word = 32'h00000001; // Asynchronous Event Request
+                10'h080: command_effects_word = 32'h00000001; // Format NVM
+                10'h100: command_effects_word = 32'h00000001; // Flush
+                10'h101: command_effects_word = 32'h00000001; // Write
+                10'h102: command_effects_word = 32'h00000001; // Read
+                10'h108: command_effects_word = 32'h00000001; // Write Zeroes
+                10'h109: command_effects_word = 32'h00000001; // Dataset Management
+                default: command_effects_word = 32'h00000000;
             endcase
         end
     endfunction
@@ -1864,6 +1893,10 @@ module pcileech_bar_impl_nvme_disk(
                                     end
                                     LOG_PAGE_FW_SLOT: begin
                                         xfer_payload <= PAYLOAD_FW_SLOT_LOG;
+                                        prepare_prp_transfer(cmd_prp1, cmd_prp2, admin_log_dw_count(cmd_dw[10], cmd_dw[11]), ST_HOST_WRITE_REQ);
+                                    end
+                                    LOG_PAGE_CMD_EFFECTS: begin
+                                        xfer_payload <= PAYLOAD_CMD_EFFECTS;
                                         prepare_prp_transfer(cmd_prp1, cmd_prp2, admin_log_dw_count(cmd_dw[10], cmd_dw[11]), ST_HOST_WRITE_REQ);
                                     end
 `ifdef NVME_ENABLE_VENDOR_LOG
