@@ -138,11 +138,16 @@ module pcileech_bar_impl_nvme_disk(
     localparam [31:0] AER_RESULT_ERROR_LOG   = 32'h00010000;
     localparam [31:0] AER_RESULT_SMART_TEMP  = 32'h00020101;
     localparam [31:0] AER_RESULT_SMART_MEDIA = 32'h00020201;
-    localparam [31:0] IDENT_NS_DESC_DW0      = 32'h00001003;
-    localparam [31:0] IDENT_NS_DESC_DW1      = 32'h78563412;
-    localparam [31:0] IDENT_NS_DESC_DW2      = 32'hbc4a3412;
-    localparam [31:0] IDENT_NS_DESC_DW3      = 32'h3412ef8d;
-    localparam [31:0] IDENT_NS_DESC_DW4      = 32'hbc9a7856;
+    localparam [31:0] IDENT_EUI64_DW0        = 32'h5a382500;
+    localparam [31:0] IDENT_EUI64_DW1        = 32'h78563412;
+    localparam [31:0] IDENT_NGUID_DW0        = 32'h78563412;
+    localparam [31:0] IDENT_NGUID_DW1        = 32'hbc4a3412;
+    localparam [31:0] IDENT_NGUID_DW2        = 32'h3412ef8d;
+    localparam [31:0] IDENT_NGUID_DW3        = 32'hbc9a7856;
+    localparam [31:0] IDENT_UUID_DW0         = 32'h78563412;
+    localparam [31:0] IDENT_UUID_DW1         = 32'hbc4a3412;
+    localparam [31:0] IDENT_UUID_DW2         = 32'h3412ef8d;
+    localparam [31:0] IDENT_UUID_DW3         = 32'hbc9a7856;
 
     (* ram_style = "block" *) reg [31:0] block_store [0:BACKING_DWORDS-1];
     bit        block_valid [0:BACKING_LBAS-1];
@@ -637,6 +642,7 @@ module pcileech_bar_impl_nvme_disk(
                 10'd17:  identify_ctrl_word = `NVME_CTRL_FW_DW1;
                 10'd18:  identify_ctrl_word = `NVME_IEEE_OUI_DWORD;
                 10'd19:  identify_ctrl_word = {16'h0001, PROFILE_MDTS, 8'h00}; // MDTS, CNTLID=1
+                10'd20:  identify_ctrl_word = NVME_VS;     // Identify Controller VER matches VS register.
                 10'd64:  identify_ctrl_word = 32'h00000002; // OACS: Format NVM, AERL=0 = one pending AER.
                 10'd65:  identify_ctrl_word = 32'h00070100; // ELPE=7 entries, LPA bit0 set, one power state.
                 10'd66:  identify_ctrl_word = {`NVME_WARNING_TEMP_K, 16'h0000};
@@ -678,6 +684,12 @@ module pcileech_bar_impl_nvme_disk(
                 10'd5:   identify_ns_word = DISK_LBAS[63:32];
                 10'd6:   identify_ns_word = 32'h00000000;   // one LBA format, no metadata.
                 10'd7:   identify_ns_word = 32'h00000000;   // no PI/DPS/RESCAP features.
+                10'd26:  identify_ns_word = IDENT_EUI64_DW0;
+                10'd27:  identify_ns_word = IDENT_EUI64_DW1;
+                10'd28:  identify_ns_word = IDENT_NGUID_DW0;
+                10'd29:  identify_ns_word = IDENT_NGUID_DW1;
+                10'd30:  identify_ns_word = IDENT_NGUID_DW2;
+                10'd31:  identify_ns_word = IDENT_NGUID_DW3;
                 10'd32:  identify_ns_word = 32'h00090000;   // LBAF0: 512-byte LBAs
                 default: identify_ns_word = 32'h00000000;
             endcase
@@ -706,11 +718,19 @@ module pcileech_bar_impl_nvme_disk(
                 PAYLOAD_IDENT_LST: payload_word = (idx == 20'd0) ? 32'd1 : 32'h00000000;
                 PAYLOAD_IDENT_DESC: begin
                     case (idx[9:0])
-                        10'd0: payload_word = IDENT_NS_DESC_DW0;
-                        10'd1: payload_word = IDENT_NS_DESC_DW1;
-                        10'd2: payload_word = IDENT_NS_DESC_DW2;
-                        10'd3: payload_word = IDENT_NS_DESC_DW3;
-                        10'd4: payload_word = IDENT_NS_DESC_DW4;
+                        10'd0:  payload_word = 32'h00000801; // EUI64 descriptor: NIDT=1, NIDL=8.
+                        10'd1:  payload_word = IDENT_EUI64_DW0;
+                        10'd2:  payload_word = IDENT_EUI64_DW1;
+                        10'd3:  payload_word = 32'h00001002; // NGUID descriptor: NIDT=2, NIDL=16.
+                        10'd4:  payload_word = IDENT_NGUID_DW0;
+                        10'd5:  payload_word = IDENT_NGUID_DW1;
+                        10'd6:  payload_word = IDENT_NGUID_DW2;
+                        10'd7:  payload_word = IDENT_NGUID_DW3;
+                        10'd8:  payload_word = 32'h00001003; // UUID descriptor: NIDT=3, NIDL=16.
+                        10'd9:  payload_word = IDENT_UUID_DW0;
+                        10'd10: payload_word = IDENT_UUID_DW1;
+                        10'd11: payload_word = IDENT_UUID_DW2;
+                        10'd12: payload_word = IDENT_UUID_DW3;
                         default: payload_word = 32'h00000000;
                     endcase
                 end
